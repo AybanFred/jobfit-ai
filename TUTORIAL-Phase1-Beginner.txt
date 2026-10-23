@@ -1,0 +1,856 @@
+=====================================================================
+  JOBFIT AI — PHASE 1 BEGINNER TUTORIAL
+  Setup and Installation, Step by Step (Windows)
+=====================================================================
+
+Who this is for:
+  Anyone starting from zero. You do not need to know Ionic, FastAPI,
+  or Supabase yet. Just follow each step in order and do not skip.
+
+How long it takes:
+  About 2 to 3 hours the first time (mostly downloads and installs).
+
+What you will have at the end:
+  - A database online (Supabase) with all the tables for the app
+  - A Python backend (FastAPI) running on your computer
+  - A mobile app (Ionic + Vue) where you can sign up and log in
+  - A screen in the app that shows 3 green "OK" checks, proving
+    that everything is connected
+
+How to read this tutorial:
+  - Lines that start with  >  are commands. Type (or copy-paste)
+    them into the terminal WITHOUT the  >  symbol, then press Enter.
+  - [CHECK] means: stop and confirm this worked before moving on.
+  - If something fails, go to PART 11 (Troubleshooting).
+
+---------------------------------------------------------------------
+CONTENTS
+---------------------------------------------------------------------
+  PART 0  - Understand the big picture (5 minutes of reading)
+  PART 1  - Install the tools on your computer
+  PART 2  - Get the project files and open them in VS Code
+  PART 3  - Learn the terminal basics you need
+  PART 4  - Create the database in Supabase
+  PART 5  - Set up and run the backend (Python FastAPI)
+  PART 6  - Create and run the mobile app (Ionic + Vue)
+  PART 7  - Test that everything is connected
+  PART 8  - How to start the project again tomorrow
+  PART 9  - Run the app on Android
+  PART 10 - Save your work to GitHub
+  PART 11 - Troubleshooting
+  PART 12 - Glossary (simple meanings of the terms)
+
+
+=====================================================================
+PART 0 — UNDERSTAND THE BIG PICTURE
+=====================================================================
+
+Think of the app like a small restaurant:
+
+  1. The MOBILE APP (Ionic + Vue)  = the dining area and the menu.
+     This is what the user sees and taps on their phone.
+
+  2. The BACKEND (Python FastAPI)  = the kitchen.
+     It does the heavy work later: reading job descriptions,
+     talking to the AI, and making the resume and cover letter.
+
+  3. The DATABASE (Supabase)       = the storage room and the
+     guest list. It keeps user accounts, profiles, jobs, resumes,
+     and logs.
+
+How they talk to each other:
+
+     [ Mobile App ]  --- login and simple data --->  [ Supabase ]
+          |                                               ^
+          |  "please do the AI work" + login token        |
+          v                                               |
+     [ FastAPI Backend ]  ----- saves results ------------+
+
+In Phase 1, we only build the "plumbing": we connect all three
+and prove that they can talk to each other. No AI yet. That
+comes in Phase 3.
+
+The project folder looks like this:
+
+  jobfit-ai/
+    README.md                     (short technical guide)
+    TUTORIAL-Phase1-Beginner.txt  (this file)
+    supabase/migrations/0001_init.sql  (the database recipe)
+    backend/                      (the Python kitchen)
+    frontend-files/               (ready-made app files to copy)
+
+
+=====================================================================
+PART 1 — INSTALL THE TOOLS ON YOUR COMPUTER
+=====================================================================
+
+You will install 5 tools now. (Android Studio comes later in Part 9.)
+Install them one by one in this order.
+
+---------------------------------------------------------------------
+1.1  VS Code (the code editor)
+---------------------------------------------------------------------
+  1. Go to: https://code.visualstudio.com
+  2. Click "Download for Windows".
+  3. Run the installer. On the "Select Additional Tasks" screen,
+     tick ALL of these:
+       [x] Add "Open with Code" action to Windows Explorer file context menu
+       [x] Add "Open with Code" action to Windows Explorer directory context menu
+       [x] Add to PATH
+  4. Click Next, then Install, then Finish.
+
+---------------------------------------------------------------------
+1.2  Node.js (needed for the mobile app)
+---------------------------------------------------------------------
+  1. Go to: https://nodejs.org
+  2. Download the version labeled "LTS" (Long Term Support).
+  3. Run the installer and keep clicking Next with the default
+     options. If it asks about "Tools for Native Modules", you can
+     leave it unchecked.
+  4. Click Install, then Finish.
+
+---------------------------------------------------------------------
+1.3  Python (needed for the backend)
+---------------------------------------------------------------------
+  1. Go to: https://www.python.org/downloads/
+  2. Download Python 3.12 (any 3.12.x is fine; 3.11 or 3.13 also work).
+  3. Run the installer.
+  4. VERY IMPORTANT: on the very first screen, at the bottom,
+     tick the box:
+       [x] Add python.exe to PATH
+     If you miss this, Python commands will not work later.
+  5. Click "Install Now".
+  6. At the end, if you see "Disable path length limit", click it.
+  7. Click Close.
+
+---------------------------------------------------------------------
+1.4  Git (saves versions of your code; needed for GitHub)
+---------------------------------------------------------------------
+  1. Go to: https://git-scm.com/download/win
+  2. Download "64-bit Git for Windows Setup".
+  3. Run the installer. Keep ALL default options and keep
+     clicking Next, then Install, then Finish.
+
+---------------------------------------------------------------------
+1.5  Restart your computer
+---------------------------------------------------------------------
+  Restarting makes Windows recognize all the new tools.
+  Yes, really. It prevents many "command not found" problems.
+
+---------------------------------------------------------------------
+1.6  Check that everything installed correctly
+---------------------------------------------------------------------
+  1. Open VS Code.
+  2. From the top menu, click:  Terminal  >  New Terminal
+     A panel opens at the bottom. This is the TERMINAL.
+  3. Type each command below and press Enter after each one:
+
+     > node -v
+     > npm -v
+     > python --version
+     > git --version
+
+  [CHECK] Each command should show a version number, like:
+          v22.11.0 / 10.9.0 / Python 3.12.7 / git version 2.47.0
+          If one says "not recognized", see PART 11.
+
+---------------------------------------------------------------------
+1.7  Install the Ionic CLI (the Ionic command tool)
+---------------------------------------------------------------------
+  In the same terminal, type:
+
+     > npm install -g @ionic/cli
+
+  Wait until it finishes (1 to 3 minutes). Then check:
+
+     > ionic -v
+
+  [CHECK] You should see a version number like 7.2.0.
+
+  Note: if you see an error about "running scripts is disabled
+  on this system", run this ONE time, type Y if asked, then try again:
+
+     > Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
+
+---------------------------------------------------------------------
+1.8  Install helpful VS Code extensions
+---------------------------------------------------------------------
+  1. In VS Code, click the Extensions icon on the left side
+     (it looks like 4 small squares), or press Ctrl+Shift+X.
+  2. Search and install each of these:
+       - Vue - Official       (by Vue)
+       - Python               (by Microsoft)
+       - Pylance              (by Microsoft)
+       - Ionic                (by Ionic)
+
+
+=====================================================================
+PART 2 — GET THE PROJECT FILES AND OPEN THEM IN VS CODE
+=====================================================================
+
+  1. Create a folder for your projects:
+       Open File Explorer > go to the C: drive > right-click >
+       New > Folder > name it:  Projects
+     So you now have:  C:\Projects
+
+     (Tip: avoid putting projects inside OneDrive or folders with
+      spaces in their names. It prevents strange errors.)
+
+  2. Download "jobfit-ai-phase1.zip" (the file I sent you).
+
+  3. Right-click the zip file > "Extract All..." > choose
+     C:\Projects  as the destination > Extract.
+
+  4. You should now have:  C:\Projects\jobfit-ai
+
+  5. Open VS Code > File > Open Folder... > select
+     C:\Projects\jobfit-ai > click "Select Folder".
+     If VS Code asks "Do you trust the authors?", click
+     "Yes, I trust the authors".
+
+  [CHECK] On the left side (the Explorer panel), you should see the
+          folders: backend, frontend-files, supabase, plus README.md
+          and this tutorial file.
+
+
+=====================================================================
+PART 3 — TERMINAL BASICS YOU NEED
+=====================================================================
+
+The terminal is where you type commands. You only need a few:
+
+  Open a terminal ......... Terminal > New Terminal  (or Ctrl + `)
+  Open a SECOND terminal .. click the "+" icon in the terminal panel
+  Go into a folder ........ cd foldername     (example: cd backend)
+  Go back one folder ...... cd ..
+  See where you are ....... look at the path before the cursor,
+                            e.g.  PS C:\Projects\jobfit-ai>
+  Stop a running program .. click inside the terminal, press Ctrl + C
+  Clear the screen ........ cls
+
+Important habit: before typing a command, always check the path
+in the terminal so you know WHICH folder you are in.
+
+We will use TWO terminals later:
+  - Terminal 1 for the backend
+  - Terminal 2 for the mobile app
+Both must stay running at the same time while you test.
+
+
+=====================================================================
+PART 4 — CREATE THE DATABASE IN SUPABASE
+=====================================================================
+
+---------------------------------------------------------------------
+4.1  Create a Supabase account and project
+---------------------------------------------------------------------
+  1. Go to: https://supabase.com and click "Start your project".
+  2. Sign in with GitHub (easiest) or with your email.
+  3. If asked to create an organization, name it anything
+     (e.g., "VantixFlow" or your name), choose the Free plan.
+  4. Click "New project" and fill in:
+       Project name ......... jobfit-ai
+       Database password .... click "Generate a password", then
+                              COPY it and save it in a notepad file.
+       Region ............... Southeast Asia (Singapore)
+  5. Click "Create new project".
+  6. Wait 1 to 2 minutes while Supabase sets it up.
+
+---------------------------------------------------------------------
+4.2  Run the database recipe (create all tables)
+---------------------------------------------------------------------
+  1. In VS Code, open this file:
+       supabase > migrations > 0001_init.sql
+  2. Click inside the file, press Ctrl + A (select all), then
+     Ctrl + C (copy).
+  3. Go back to the Supabase website. On the left menu, click
+     "SQL Editor".
+  4. Click "New query" (or the "+" button).
+  5. Click inside the big empty editor and press Ctrl + V (paste).
+  6. Click the green "Run" button (bottom right), or press
+     Ctrl + Enter.
+  7. If Supabase shows a warning about "destructive operations",
+     click "Run this query" to confirm. (It is safe; it only
+     replaces old policies of the same name.)
+
+  [CHECK] At the bottom you should see:
+          "Success. No rows returned"
+
+---------------------------------------------------------------------
+4.3  Confirm the tables were created
+---------------------------------------------------------------------
+  1. On the left menu, click "Table Editor".
+  2. You should see these 11 tables:
+       activity_logs, applications, education, experiences,
+       generated_docs, job_posts, match_results, profiles,
+       projects, skills, user_skills
+  3. Click "skills". You should see 25 rows (Python, Vue.js, etc.).
+  4. On the left menu, click "Storage". You should see a bucket
+     named "documents".
+
+  [CHECK] All 11 tables, 25 skills, and the "documents" bucket exist.
+
+---------------------------------------------------------------------
+4.4  Turn off email confirmation (for testing only)
+---------------------------------------------------------------------
+  This lets you sign up and log in right away without checking
+  your email every time while developing.
+
+  1. Left menu: "Authentication".
+  2. Go to "Sign In / Providers" (sometimes under "Configuration").
+  3. Click "Email".
+  4. Turn OFF "Confirm email". Click Save.
+
+  Remember: turn it back ON before you release the app publicly.
+
+---------------------------------------------------------------------
+4.5  Copy your keys (the "passwords" the app uses)
+---------------------------------------------------------------------
+  Open Notepad and keep it open. You will copy 3 values into it.
+
+  A) PROJECT URL
+     - Left menu (bottom): "Project Settings" (gear icon) > "Data API"
+       (or click the "Connect" button at the top of the dashboard).
+     - Copy the URL. It looks like:
+         https://abcdefghijklmnop.supabase.co
+     - Paste it into Notepad with the label:  PROJECT URL
+
+  B) PUBLISHABLE KEY (also called "anon" key)  — safe for the app
+     - Project Settings > "API Keys".
+     - Copy the "Publishable key" (starts with  sb_publishable_ ).
+       If you only see a "Legacy API Keys" tab, copy the "anon public"
+       key instead (a long text starting with  eyJ ).
+     - Paste it into Notepad with the label:  PUBLISHABLE KEY
+
+  C) SECRET KEY (also called "service_role" key) — backend ONLY
+     - Same page. Under "Secret keys", click to reveal and copy
+       (starts with  sb_secret_ ).
+       If you only see legacy keys, copy "service_role" instead.
+     - Paste it into Notepad with the label:  SECRET KEY
+
+  WARNING about the SECRET KEY:
+     It is like the master key of your whole database.
+     NEVER put it in the mobile app, NEVER post it online,
+     NEVER upload it to GitHub.
+
+
+=====================================================================
+PART 5 — SET UP AND RUN THE BACKEND (PYTHON FASTAPI)
+=====================================================================
+
+---------------------------------------------------------------------
+5.1  Go into the backend folder
+---------------------------------------------------------------------
+  1. In VS Code, open a terminal (Terminal > New Terminal).
+  2. Check that the path ends with  \jobfit-ai>  then type:
+
+     > cd backend
+
+  [CHECK] The path now ends with  \jobfit-ai\backend>
+
+---------------------------------------------------------------------
+5.2  Create a "virtual environment" (a private box for Python packages)
+---------------------------------------------------------------------
+  This keeps this project's Python packages separate from other
+  projects on your computer.
+
+     > python -m venv .venv
+
+  Wait a few seconds. A new folder named ".venv" appears inside
+  backend.
+
+---------------------------------------------------------------------
+5.3  Turn ON (activate) the virtual environment
+---------------------------------------------------------------------
+     > .venv\Scripts\Activate.ps1
+
+  [CHECK] The start of the terminal line now shows  (.venv)  like:
+          (.venv) PS C:\Projects\jobfit-ai\backend>
+
+  If you get a red error about "running scripts is disabled", run:
+     > Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
+  then run the activate command again.
+
+  Remember: you must activate the virtual environment EVERY time
+  you open a new terminal for the backend.
+
+  Also tell VS Code to use it:
+    Press Ctrl + Shift + P > type "Python: Select Interpreter" >
+    choose the one that shows  .venv
+
+---------------------------------------------------------------------
+5.4  Install the backend packages
+---------------------------------------------------------------------
+     > pip install -r requirements.txt
+
+  This downloads FastAPI, Supabase, and others. It takes 1 to 3
+  minutes. Some yellow "notice" text is normal.
+
+  [CHECK] The last lines say "Successfully installed ..." with no
+          red ERROR lines.
+
+---------------------------------------------------------------------
+5.5  Create the backend settings file (.env)
+---------------------------------------------------------------------
+     > copy .env.example .env
+
+  Now open the new file  backend > .env  in VS Code and fill it in
+  using your Notepad values:
+
+     SUPABASE_URL=         <- paste your PROJECT URL
+     SUPABASE_SERVICE_KEY= <- paste your SECRET KEY
+
+  Example (fake values):
+     SUPABASE_URL=https://abcdefghijklmnop.supabase.co
+     SUPABASE_SERVICE_KEY=sb_secret_xxxxxxxxxxxxxxxxxxxx
+
+  Rules for .env files:
+    - No spaces around the "=" sign
+    - No quotation marks
+  Leave SUPABASE_JWT_SECRET and ANTHROPIC_API_KEY empty for now.
+
+  Press Ctrl + S to save.
+
+---------------------------------------------------------------------
+5.6  Run the tests
+---------------------------------------------------------------------
+     > python -m pytest -q
+
+  [CHECK] You should see something like:  4 passed
+          (If any test fails, copy the error and send it to me.)
+
+---------------------------------------------------------------------
+5.7  Start the backend server
+---------------------------------------------------------------------
+     > uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+
+  [CHECK] You should see:
+          Uvicorn running on http://0.0.0.0:8000
+          Application startup complete.
+
+  If Windows Firewall shows a popup, click "Allow access".
+
+  KEEP THIS TERMINAL OPEN AND RUNNING. If you close it, the
+  backend stops.
+
+---------------------------------------------------------------------
+5.8  Test the backend in your browser
+---------------------------------------------------------------------
+  1. Open Chrome and go to:
+       http://localhost:8000/api/v1/health
+
+  [CHECK] You should see text like:
+          {"status":"ok","env":"development","supabase_configured":true,...}
+          "supabase_configured" must be true. If it is false, your
+          .env values are missing; fix them and save the file.
+
+  2. Now go to:
+       http://localhost:8000/docs
+     This is a free, automatic page that lists all your API
+     endpoints. You can try them here later.
+
+
+=====================================================================
+PART 6 — CREATE AND RUN THE MOBILE APP (IONIC + VUE)
+=====================================================================
+
+---------------------------------------------------------------------
+6.1  Open a SECOND terminal
+---------------------------------------------------------------------
+  In the terminal panel, click the "+" icon. A new terminal opens.
+  (Terminal 1 with the backend keeps running in the background.)
+
+  Make sure this new terminal's path ends with  \jobfit-ai>
+  If it ends with \backend>, type:   > cd ..
+
+---------------------------------------------------------------------
+6.2  Create the Ionic app
+---------------------------------------------------------------------
+     > ionic start frontend blank --type=vue --capacitor
+
+  What happens:
+    - It downloads a starter app. This takes 2 to 5 minutes.
+    - If it asks "Create free Ionic account?", type  n  and press Enter.
+    - If it asks any other yes/no question, the default is fine.
+
+  [CHECK] A new folder named "frontend" appears in VS Code, and the
+          terminal says something like "Your Ionic app is ready!"
+
+---------------------------------------------------------------------
+6.3  Go into the app folder and install 2 extra packages
+---------------------------------------------------------------------
+     > cd frontend
+     > npm install @supabase/supabase-js pinia
+
+  - @supabase/supabase-js  lets the app talk to Supabase
+  - pinia                  stores the logged-in user's info
+
+---------------------------------------------------------------------
+6.4  Copy the ready-made app files
+---------------------------------------------------------------------
+  I already prepared the login page, home page, and connection code
+  in the "frontend-files" folder. Now we copy them into the new app.
+
+  First go back to the main folder:
+     > cd ..
+
+  Then copy (these two commands are for PowerShell, the default
+  VS Code terminal on Windows):
+     > Copy-Item -Recurse -Force frontend-files\src\* frontend\src\
+     > Copy-Item frontend-files\.env.example frontend\.env
+
+  [CHECK] In VS Code, inside  frontend > src , you should now see:
+          - services  (with api.ts and supabase.ts)
+          - stores    (with auth.ts)
+          - views     (with HomePage.vue and LoginPage.vue)
+          and a  .env  file directly inside the  frontend  folder.
+
+  (Prefer the mouse? You can also open both folders in File Explorer
+   and drag-and-drop the "src" contents, choosing "Replace" when asked.)
+
+---------------------------------------------------------------------
+6.5  Fill in the app settings file (frontend/.env)
+---------------------------------------------------------------------
+  Open  frontend > .env  in VS Code and fill it in:
+
+     VITE_SUPABASE_URL=       <- paste your PROJECT URL
+     VITE_SUPABASE_ANON_KEY=  <- paste your PUBLISHABLE KEY
+     VITE_API_URL=http://localhost:8000/api/v1   (leave as is)
+
+  DOUBLE-CHECK: this file must contain the PUBLISHABLE key,
+  NOT the SECRET key.
+
+  Press Ctrl + S to save.
+
+---------------------------------------------------------------------
+6.6  Run the app in your browser
+---------------------------------------------------------------------
+     > cd frontend
+     > ionic serve
+
+  [CHECK] The terminal shows "Local: http://localhost:8100" and
+          your browser opens the app automatically.
+          You should see the JobFit AI login screen.
+
+  Tip: to see it like a phone, press F12 in Chrome, then click the
+  small phone/tablet icon (Toggle device toolbar) at the top-left of
+  the developer panel.
+
+  KEEP THIS TERMINAL RUNNING TOO.
+
+
+=====================================================================
+PART 7 — TEST THAT EVERYTHING IS CONNECTED
+=====================================================================
+
+  Make sure BOTH terminals are still running:
+    Terminal 1: uvicorn (backend)
+    Terminal 2: ionic serve (app)
+
+  1. In the app, tap "Sign up".
+  2. Enter your full name, your email, and a password
+     (at least 6 characters).
+  3. Tap the "Sign up" button.
+     You should see: "Account created..." and it switches to Log in.
+  4. Now enter the same email and password and tap "Log in".
+  5. You should arrive at the Home page with 3 checks:
+
+       Supabase login ............ OK
+       Profile row in database ... OK
+       FastAPI backend ........... OK
+
+  [CHECK] If all 3 are green OK — CONGRATULATIONS! Phase 1 works.
+
+  Bonus checks in Supabase (website):
+    - Authentication > Users: your new account is listed.
+    - Table Editor > profiles: a row with your name and email.
+    - Table Editor > activity_logs: a row with action
+      "auth.me_checked". This is the start of your app's logs.
+
+
+=====================================================================
+PART 8 — HOW TO START THE PROJECT AGAIN TOMORROW
+=====================================================================
+
+When you turn off your computer, everything stops. To start again:
+
+  1. Open VS Code. It usually reopens the jobfit-ai folder.
+     (If not: File > Open Folder > C:\Projects\jobfit-ai)
+
+  2. TERMINAL 1 (backend):
+     > cd backend
+     > .venv\Scripts\Activate.ps1
+     > uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+
+  3. TERMINAL 2 (app) — click "+" for a new terminal:
+     > cd frontend
+     > ionic serve
+
+  That's it. You do NOT need to reinstall anything.
+
+  Note: free Supabase projects pause after about 1 week of no
+  activity. If the app suddenly cannot connect, open your Supabase
+  dashboard and click "Restore project".
+
+
+=====================================================================
+PART 9 — RUN THE APP ON ANDROID
+=====================================================================
+
+Do this only after Part 7 works in the browser.
+
+---------------------------------------------------------------------
+9.1  Install Android Studio
+---------------------------------------------------------------------
+  1. Go to: https://developer.android.com/studio and download it.
+  2. Run the installer with default options (it is a big download,
+     around 1 GB or more).
+  3. Open Android Studio once and let it finish the "Setup Wizard"
+     (choose "Standard"). It downloads the Android SDK.
+  4. Create a virtual phone (emulator):
+     More Actions (or Tools) > Device Manager > "+" / Create Device >
+     choose "Pixel 7" (or any) > Next > download a recent system
+     image > Next > Finish.
+
+---------------------------------------------------------------------
+9.2  Point the app to the backend correctly
+---------------------------------------------------------------------
+  Inside an Android emulator, "localhost" means the emulator itself,
+  NOT your computer. So change  frontend\.env :
+
+    For the Android EMULATOR:
+      VITE_API_URL=http://10.0.2.2:8000/api/v1
+
+    For a REAL PHONE (same Wi-Fi as your computer):
+      1. In a terminal, run:  > ipconfig
+      2. Find "IPv4 Address" under your Wi-Fi, e.g. 192.168.1.10
+      3. Use:  VITE_API_URL=http://192.168.1.10:8000/api/v1
+
+  Save the file.
+
+---------------------------------------------------------------------
+9.3  Build and add Android
+---------------------------------------------------------------------
+  In Terminal 2, stop ionic serve first (Ctrl + C), then:
+
+     > ionic build
+     > npx cap add android
+     > npx cap sync android
+
+---------------------------------------------------------------------
+9.4  Allow plain "http" for local testing
+---------------------------------------------------------------------
+  Android blocks non-secure (http) connections by default.
+  1. Open the file:
+       frontend > android > app > src > main > AndroidManifest.xml
+  2. Find the line that starts with  <application
+  3. Add this attribute inside it:
+       android:usesCleartextTraffic="true"
+     Example:
+       <application
+           android:usesCleartextTraffic="true"
+           android:allowBackup="true"
+           ...
+  4. Save.
+
+  (Remove this later when your backend is online with https.)
+
+---------------------------------------------------------------------
+9.5  Open and run in Android Studio
+---------------------------------------------------------------------
+     > npx cap open android
+
+  1. Android Studio opens the project. Wait for "Gradle sync" to
+     finish (see the progress bar at the bottom; first time can take
+     5 to 10 minutes).
+  2. At the top, choose your emulator (e.g., Pixel 7).
+  3. Click the green Run button (play icon).
+
+  [CHECK] The app opens on the virtual phone. Log in and confirm
+          the 3 checks are OK. (The backend in Terminal 1 must be
+          running.)
+
+  Every time you change the app code later, run:
+     > ionic build
+     > npx cap sync android
+  then press Run again in Android Studio.
+
+  iPhone/iOS: this requires a Mac with Xcode. Skip it for now.
+
+
+=====================================================================
+PART 10 — SAVE YOUR WORK TO GITHUB
+=====================================================================
+
+---------------------------------------------------------------------
+10.1  First-time Git setup (only once per computer)
+---------------------------------------------------------------------
+     > git config --global user.name "Your Name"
+     > git config --global user.email "your-email@example.com"
+
+---------------------------------------------------------------------
+10.2  Create an empty repository on GitHub
+---------------------------------------------------------------------
+  1. Go to https://github.com and log in.
+  2. Click "+" (top right) > "New repository".
+  3. Repository name:  jobfit-ai
+  4. Choose Public (for portfolio) or Private.
+  5. Do NOT tick "Add a README" (we already have one).
+  6. Click "Create repository". Keep that page open.
+
+---------------------------------------------------------------------
+10.3  Upload (push) the project
+---------------------------------------------------------------------
+  In a terminal at the main folder (path ends with \jobfit-ai>):
+
+     > git init
+     > git add .
+     > git status
+
+  STOP AND CHECK the list from "git status":
+    There must be NO file named ".env" in the list.
+    (.env.example is fine.) The included .gitignore file hides them.
+    If you see a .env file, do NOT continue; send me a screenshot.
+
+     > git commit -m "Phase 1: setup, database, backend and app skeleton"
+     > git branch -M main
+     > git remote add origin https://github.com/YOUR-USERNAME/jobfit-ai.git
+     > git push -u origin main
+
+  Replace YOUR-USERNAME with your GitHub username.
+  A browser window may open asking you to sign in to GitHub; approve it.
+
+  [CHECK] Refresh your GitHub page. Your files are now online.
+
+
+=====================================================================
+PART 11 — TROUBLESHOOTING
+=====================================================================
+
+PROBLEM: "node / python / git / ionic is not recognized..."
+  FIX: Restart VS Code (or the computer). If still failing, reinstall
+       that tool. For Python, make sure "Add python.exe to PATH" was
+       ticked during install.
+
+PROBLEM: "running scripts is disabled on this system"
+  FIX: > Set-ExecutionPolicy -Scope CurrentUser RemoteSigned
+       Type Y if asked. Then retry.
+
+PROBLEM: "python" opens the Microsoft Store instead of running
+  FIX: Windows Settings > Apps > Advanced app settings >
+       App execution aliases > turn OFF both "python.exe" and
+       "python3.exe". Then reopen the terminal.
+
+PROBLEM: "uvicorn is not recognized" or "No module named fastapi"
+  FIX: The virtual environment is not active. Make sure you see
+       (.venv) at the start of the line. Run:
+       > .venv\Scripts\Activate.ps1
+
+PROBLEM: /health shows "supabase_configured": false
+  FIX: backend\.env is empty or not saved. Fill in SUPABASE_URL and
+       SUPABASE_SERVICE_KEY, save, and restart uvicorn (Ctrl + C, then
+       run the uvicorn command again).
+
+PROBLEM: Home page shows "FastAPI backend: Failed" with "Failed to fetch"
+  FIX: 1) Is Terminal 1 (uvicorn) still running?
+       2) Is VITE_API_URL correct in frontend\.env?
+       3) After editing frontend\.env, stop ionic serve (Ctrl + C) and
+          start it again. The app only reads .env when it starts.
+
+PROBLEM: Home page shows "FastAPI backend: Failed ... API 401 Invalid token"
+  FIX: 1) SUPABASE_URL in backend\.env must be the SAME project as
+          VITE_SUPABASE_URL in frontend\.env.
+       2) If the error mentions "HS256" or "SUPABASE_JWT_SECRET", your
+          project uses the older login-token system. In Supabase go to
+          Project Settings > JWT Keys > copy the "Legacy JWT secret",
+          paste it into backend\.env as SUPABASE_JWT_SECRET=...,
+          save, and restart uvicorn.
+
+PROBLEM: "Profile row in database" stays "Checking..."
+  FIX: The SQL in Part 4.2 did not finish. Run it again (it is safe
+       to run more than once). Then sign up with a NEW email.
+
+PROBLEM: Login says "Email not confirmed"
+  FIX: Turn off "Confirm email" (Part 4.4), or click the link in the
+       confirmation email Supabase sent you.
+
+PROBLEM: "Invalid login credentials"
+  FIX: Wrong email or password, or you have not signed up yet.
+
+PROBLEM: Port 8000 or 8100 is "already in use"
+  FIX: You may already have it running in another terminal. Close the
+       extra terminal (trash can icon), or restart VS Code.
+
+PROBLEM: Android app cannot reach the backend
+  FIX: Use 10.0.2.2 (emulator) or your IPv4 address (real phone) in
+       VITE_API_URL, add usesCleartextTraffic (Part 9.4), run
+       "ionic build" and "npx cap sync android" again, and make sure
+       uvicorn was started with  --host 0.0.0.0 . For a real phone,
+       also allow Python through Windows Firewall.
+
+STILL STUCK?
+  Copy the full red error text (or take a screenshot) and send it
+  to me, plus which Part and step number you were on.
+
+
+=====================================================================
+PART 12 — GLOSSARY (SIMPLE MEANINGS)
+=====================================================================
+
+  Terminal ........ A window where you type commands to the computer.
+  Command ......... An instruction you type in the terminal.
+  Folder / directory  Same thing.
+  Frontend ........ The part users see (the mobile app).
+  Backend ......... The part users don't see that does the work.
+  API ............. A set of "doors" the app knows how to knock on
+                    to ask the backend for something.
+  Endpoint ........ One specific door, e.g. /api/v1/health.
+  Database ........ Organized storage of data in tables.
+  Table / Row ..... Like an Excel sheet / one line in that sheet.
+  SQL ............. The language used to create and query tables.
+  Supabase ........ An online service that gives you a database,
+                    user login, and file storage.
+  RLS (Row Level Security)  A rule so each user only sees their own rows.
+  Ionic ........... Ready-made mobile-style buttons, lists, and pages.
+  Vue ............. The JavaScript framework that powers the app screens.
+  Capacitor ....... Wraps the web app into a real Android/iOS app.
+  FastAPI ......... A Python tool for building the backend API.
+  Uvicorn ......... The program that runs the FastAPI backend.
+  npm ............. Installs JavaScript packages.
+  pip ............. Installs Python packages.
+  Virtual environment (.venv)  A private box of Python packages
+                    just for this project.
+  .env file ....... A private settings file holding keys and URLs.
+                    Never upload it to GitHub.
+  Publishable/anon key  Public key the app uses. Safe in the app.
+  Secret/service key    Master key. Backend only. Keep it hidden.
+  Token (JWT) ..... A digital "ID card" the app shows the backend
+                    to prove the user is logged in.
+  localhost ....... "This same computer."
+  Port ............ A numbered door on your computer (8000, 8100).
+  Git ............. Tracks versions of your code.
+  GitHub .......... A website that stores your Git projects online.
+  Commit / Push ... Save a version / upload it to GitHub.
+
+
+=====================================================================
+PHASE 1 FINAL CHECKLIST
+=====================================================================
+
+  [ ] Part 1  - VS Code, Node.js, Python, Git, Ionic CLI installed
+  [ ] Part 2  - Project extracted to C:\Projects\jobfit-ai and opened
+  [ ] Part 4  - Supabase project created, SQL ran, 11 tables exist
+  [ ] Part 4  - 3 keys copied to Notepad
+  [ ] Part 5  - Backend tests pass and /health shows "ok"
+  [ ] Part 6  - Ionic app created, files copied, login screen shows
+  [ ] Part 7  - Sign up + log in work, 3 checks are OK
+  [ ] Part 9  - App runs on the Android emulator (optional for now)
+  [ ] Part 10 - Code pushed to GitHub with NO .env files
+
+When all boxes are ticked, you are ready for:
+  PHASE 2 — Master Profile (profile, experience, projects,
+  education, skills screens, and "import my existing resume").
+
+=====================================================================
+  END OF PHASE 1 TUTORIAL
+=====================================================================
