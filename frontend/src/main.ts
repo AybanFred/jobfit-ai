@@ -24,13 +24,18 @@ import '@ionic/vue/css/display.css';
 /* Follows the phone's light/dark setting */
 import '@ionic/vue/css/palettes/dark.system.css';
 
-/* Theme variables */
+/* daisyUI themes (Tailwind without its reset), then the bridge to Ionic's colors */
+import './theme/daisy.css';
 import './theme/variables.css';
+
+import { useThemeStore } from './stores/theme';
 
 const app = createApp(App)
   .use(IonicVue)
   .use(createPinia()) // Pinia must be installed before the router guard runs
   .use(router);
+
+useThemeStore().init(); // set data-theme before the first screen is shown
 
 router.isReady().then(() => {
   app.mount('#app');

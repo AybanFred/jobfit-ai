@@ -3,6 +3,9 @@
     <ion-header>
       <ion-toolbar color="primary">
         <ion-title>JobFit AI</ion-title>
+        <ion-buttons slot="end">
+          <ThemePicker />
+        </ion-buttons>
       </ion-toolbar>
     </ion-header>
 
@@ -45,8 +48,9 @@ import { ref } from 'vue';
 import { useRouter } from 'vue-router';
 import {
   IonPage, IonHeader, IonToolbar, IonTitle, IonContent, IonSegment, IonSegmentButton,
-  IonLabel, IonList, IonItem, IonInput, IonButton, IonText, IonSpinner,
+  IonLabel, IonList, IonItem, IonInput, IonButton, IonButtons, IonText, IonSpinner,
 } from '@ionic/vue';
+import ThemePicker from '@/components/ThemePicker.vue';
 import { useAuthStore } from '@/stores/auth';
 
 const auth = useAuthStore();

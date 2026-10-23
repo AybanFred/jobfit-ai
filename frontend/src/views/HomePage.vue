@@ -4,6 +4,7 @@
       <ion-toolbar color="primary">
         <ion-title>JobFit AI</ion-title>
         <ion-buttons slot="end">
+          <ThemePicker />
           <ion-button @click="logout">Log out</ion-button>
         </ion-buttons>
       </ion-toolbar>
@@ -46,6 +47,7 @@ import {
   IonPage, IonHeader, IonToolbar, IonTitle, IonContent, IonButtons, IonButton,
   IonList, IonItem, IonLabel, IonBadge, IonText,
 } from '@ionic/vue';
+import ThemePicker from '@/components/ThemePicker.vue';
 import { useAuthStore } from '@/stores/auth';
 import { supabase } from '@/services/supabase';
 import { api } from '@/services/api';

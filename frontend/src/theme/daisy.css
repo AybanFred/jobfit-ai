@@ -1,0 +1,9 @@
+/* Tailwind + daisyUI, without Tailwind's base reset (preflight) so Ionic keeps its own look.
+   Layers are declared first so Ionic's unlayered CSS always wins over daisyUI classes. */
+@layer theme, base, components, utilities;
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities);
+
+@plugin "daisyui" {
+  themes: all;
+}

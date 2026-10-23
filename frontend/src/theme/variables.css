@@ -1,2 +1,65 @@
 /* For information on how to create your own theme, please refer to:
 http://ionicframework.com/docs/theming/ */
+
+/* Bridge: the active daisyUI theme (set by data-theme on <html>) drives Ionic's colors.
+   The matching "-rgb" variables are set from code in src/theme/ionicBridge.ts. */
+:root[data-theme] {
+  --ion-background-color: var(--color-base-100);
+  --ion-text-color: var(--color-base-content);
+
+  --ion-color-primary: var(--color-primary);
+  --ion-color-primary-contrast: var(--color-primary-content);
+  --ion-color-primary-shade: color-mix(in oklab, var(--color-primary), black 12%);
+  --ion-color-primary-tint: color-mix(in oklab, var(--color-primary), white 12%);
+
+  --ion-color-secondary: var(--color-secondary);
+  --ion-color-secondary-contrast: var(--color-secondary-content);
+  --ion-color-secondary-shade: color-mix(in oklab, var(--color-secondary), black 12%);
+  --ion-color-secondary-tint: color-mix(in oklab, var(--color-secondary), white 12%);
+
+  --ion-color-tertiary: var(--color-accent);
+  --ion-color-tertiary-contrast: var(--color-accent-content);
+  --ion-color-tertiary-shade: color-mix(in oklab, var(--color-accent), black 12%);
+  --ion-color-tertiary-tint: color-mix(in oklab, var(--color-accent), white 12%);
+
+  --ion-color-success: var(--color-success);
+  --ion-color-success-contrast: var(--color-success-content);
+  --ion-color-success-shade: color-mix(in oklab, var(--color-success), black 12%);
+  --ion-color-success-tint: color-mix(in oklab, var(--color-success), white 12%);
+
+  --ion-color-warning: var(--color-warning);
+  --ion-color-warning-contrast: var(--color-warning-content);
+  --ion-color-warning-shade: color-mix(in oklab, var(--color-warning), black 12%);
+  --ion-color-warning-tint: color-mix(in oklab, var(--color-warning), white 12%);
+
+  --ion-color-danger: var(--color-error);
+  --ion-color-danger-contrast: var(--color-error-content);
+  --ion-color-danger-shade: color-mix(in oklab, var(--color-error), black 12%);
+  --ion-color-danger-tint: color-mix(in oklab, var(--color-error), white 12%);
+
+  --ion-color-medium: var(--color-neutral);
+  --ion-color-medium-contrast: var(--color-neutral-content);
+  --ion-color-medium-shade: color-mix(in oklab, var(--color-neutral), black 12%);
+  --ion-color-medium-tint: color-mix(in oklab, var(--color-neutral), white 12%);
+
+  /* Ionic "step" colors (borders, item backgrounds) blend text color into the background */
+  --ion-color-step-50: color-mix(in oklab, var(--color-base-content) 5%, var(--color-base-100));
+  --ion-color-step-100: color-mix(in oklab, var(--color-base-content) 10%, var(--color-base-100));
+  --ion-color-step-150: color-mix(in oklab, var(--color-base-content) 15%, var(--color-base-100));
+  --ion-color-step-200: color-mix(in oklab, var(--color-base-content) 20%, var(--color-base-100));
+  --ion-color-step-250: color-mix(in oklab, var(--color-base-content) 25%, var(--color-base-100));
+  --ion-color-step-300: color-mix(in oklab, var(--color-base-content) 30%, var(--color-base-100));
+  --ion-color-step-350: color-mix(in oklab, var(--color-base-content) 35%, var(--color-base-100));
+  --ion-color-step-400: color-mix(in oklab, var(--color-base-content) 40%, var(--color-base-100));
+  --ion-color-step-450: color-mix(in oklab, var(--color-base-content) 45%, var(--color-base-100));
+  --ion-color-step-500: color-mix(in oklab, var(--color-base-content) 50%, var(--color-base-100));
+  --ion-color-step-550: color-mix(in oklab, var(--color-base-content) 55%, var(--color-base-100));
+  --ion-color-step-600: color-mix(in oklab, var(--color-base-content) 60%, var(--color-base-100));
+  --ion-color-step-650: color-mix(in oklab, var(--color-base-content) 65%, var(--color-base-100));
+  --ion-color-step-700: color-mix(in oklab, var(--color-base-content) 70%, var(--color-base-100));
+  --ion-color-step-750: color-mix(in oklab, var(--color-base-content) 75%, var(--color-base-100));
+  --ion-color-step-800: color-mix(in oklab, var(--color-base-content) 80%, var(--color-base-100));
+  --ion-color-step-850: color-mix(in oklab, var(--color-base-content) 85%, var(--color-base-100));
+  --ion-color-step-900: color-mix(in oklab, var(--color-base-content) 90%, var(--color-base-100));
+  --ion-color-step-950: color-mix(in oklab, var(--color-base-content) 95%, var(--color-base-100));
+}
