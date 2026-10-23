@@ -1,0 +1,349 @@
+=====================================================================
+  JOBFIT AI — CLAUDE CODE TEAM SETUP
+  Subagents, Skills, and Memory (Beginner Tutorial, Windows)
+=====================================================================
+
+What you will have at the end:
+  - A "virtual dev team" of 6 specialists inside Claude Code:
+      backend-engineer, frontend-engineer, ui-ux-designer,
+      qa-engineer, docs-writer, git-committer
+  - 5 shortcut commands (skills):
+      /feature, /test, /commit, /update-docs, /db-migration
+  - Project memory, so Claude knows your project, stack, rules,
+    and how you like to work, every time you open it
+  - Safety settings: Claude cannot read your .env secrets and must
+    ask before pushing to GitHub or deleting files
+
+Time needed: about 20 to 30 minutes.
+
+How to read this tutorial:
+  - Lines starting with  >  are commands (type them without the > ).
+  - [CHECK] means confirm it worked before continuing.
+
+
+---------------------------------------------------------------------
+PART 0 — HOW THE PIECES WORK (simple explanation)
+---------------------------------------------------------------------
+
+Think of Claude Code as your TECH LEAD. You add 3 things around it:
+
+  1. MEMORY (CLAUDE.md files and rules)
+     = the "project handbook" Claude reads at the start of every session.
+     It explains the project, the stack, the commands, the coding rules,
+     and how YOU like to work.
+
+     There are 4 kinds of memory:
+       a) Project memory  -> CLAUDE.md in your project folder
+                             (you write it; shared on GitHub)
+       b) Rules           -> .claude/rules/*.md
+                             (load only when Claude touches matching files,
+                              e.g. backend rules only for backend files)
+       c) Personal memory -> C:\Users\<You>\.claude\CLAUDE.md
+                             (about YOU; applies to ALL your projects)
+       d) Auto memory     -> notes Claude writes by itself when you correct
+                             it or say "remember that ...". Each subagent
+                             also keeps its own notes in
+                             .claude/agent-memory/<agent-name>/
+
+  2. SUBAGENTS (.claude/agents/*.md)
+     = specialist team members. Each one has its own job description,
+     its own tools, and works in its own separate "head" (context), so
+     your main chat stays clean. The tech lead hands work to them.
+
+  3. SKILLS (.claude/skills/<name>/SKILL.md)
+     = saved recipes you trigger with a slash command, like /feature.
+     A skill tells Claude the exact steps to follow every time.
+
+  Plus: SETTINGS (.claude/settings.json)
+     = safety rules: what Claude may do without asking, what it must
+       ask about, and what it may never do.
+
+
+---------------------------------------------------------------------
+PART 1 — CHECK CLAUDE CODE IS READY
+---------------------------------------------------------------------
+
+  1. Open VS Code with your project:
+       File > Open Folder > C:\Projects\jobfit-ai
+  2. Open a terminal (Terminal > New Terminal) and type:
+
+     > claude --version
+
+  [CHECK] You see a version number.
+          If not, install Claude Code first:
+            > npm install -g @anthropic-ai/claude-code
+          (or follow the official installer on the Claude Code docs page),
+          then run  claude  once and log in.
+
+  3. Update to the newest version (subagent memory needs a recent one):
+
+     > claude update
+
+
+---------------------------------------------------------------------
+PART 2 — MAKE YOUR PROJECT A GIT REPOSITORY (if not done yet)
+---------------------------------------------------------------------
+
+Auto memory and the git-committer work best inside a Git repository.
+If you already did Phase 1 Part 10 (GitHub), skip this part.
+
+     > cd C:\Projects\jobfit-ai
+     > git init
+     > git add .
+     > git commit -m "chore: initial Phase 1 project"
+
+  [CHECK] "git status" says "nothing to commit, working tree clean".
+
+
+---------------------------------------------------------------------
+PART 3 — COPY THE SETUP FILES INTO YOUR PROJECT
+---------------------------------------------------------------------
+
+  1. Download "jobfit-claude-team-setup.zip" and extract it anywhere
+     (for example to your Downloads folder).
+     You will get a folder named "claude-setup" containing:
+
+       claude-setup\
+         CLAUDE.md                        <- project memory
+         .claude\
+           settings.json                  <- safety settings
+           agents\   (6 files)            <- your specialist team
+           skills\   (5 folders)          <- slash commands
+           rules\    (4 files)            <- coding rules
+         user-level\CLAUDE.md             <- your PERSONAL memory
+         gitignore-additions.txt
+         TUTORIAL-Claude-Code-Team-Setup.txt (this file)
+
+     Note: folders starting with a dot (.claude) may be hidden.
+     In File Explorer click View > Show > Hidden items to see them.
+
+  2. Copy into your project. In the VS Code terminal (PowerShell),
+     replace the path with where you extracted the zip:
+
+     > $src = "$HOME\Downloads\claude-setup"
+     > Copy-Item "$src\CLAUDE.md" C:\Projects\jobfit-ai\
+     > Copy-Item -Recurse -Force "$src\.claude" C:\Projects\jobfit-ai\
+
+  [CHECK] In VS Code's Explorer you now see, at the project root:
+          CLAUDE.md  and a  .claude  folder with agents, skills,
+          rules, and settings.json inside.
+
+  3. Install your PERSONAL memory (about you, for all projects):
+
+     > New-Item -ItemType Directory -Force "$HOME\.claude"
+     > Copy-Item "$src\user-level\CLAUDE.md" "$HOME\.claude\CLAUDE.md"
+
+     IMPORTANT: if you already had a file at  C:\Users\<You>\.claude\CLAUDE.md,
+     this replaces it. In that case, open both and merge them by hand instead.
+
+  4. Update .gitignore. Open  C:\Projects\jobfit-ai\.gitignore  and paste
+     the lines from  gitignore-additions.txt  at the bottom. Save.
+     (They keep your private notes and local settings off GitHub.)
+
+
+---------------------------------------------------------------------
+PART 4 — START CLAUDE CODE AND VERIFY EVERYTHING LOADED
+---------------------------------------------------------------------
+
+  Because this is the first time the .claude\agents folder exists,
+  Claude Code must be (re)started.
+
+  1. In the terminal, make sure you are in the project root:
+     > cd C:\Projects\jobfit-ai
+  2. Start Claude Code:
+     > claude
+     (Or use the Claude Code panel in VS Code if you use the extension.
+      Close and reopen it so it picks up the new files.)
+  3. If asked whether you trust this folder, choose Yes.
+
+  Now run these checks INSIDE Claude Code:
+
+  a) Memory loaded?
+     > /memory
+     [CHECK] You see the project CLAUDE.md and your user CLAUDE.md listed.
+             Make sure "Auto memory" is ON (toggle it if it's off).
+             Press Esc to close.
+
+     > /context
+     [CHECK] Under "Memory files" you see CLAUDE.md files listed.
+
+  b) Skills loaded?
+     Type only a slash:  /
+     [CHECK] In the list you see feature, test, commit, update-docs,
+             db-migration. Press Esc.
+
+  c) Subagents loaded?
+     Type  @  and look at the suggestions, or type:
+     > @agent-qa-engineer what is your job? Answer in 3 lines.
+     [CHECK] It replies as the QA engineer.
+
+  d) Claude understands the project?
+     > What project is this, what phase are we on, and how do I like
+       you to explain things?
+     [CHECK] It mentions JobFit AI, Phase 2 (Master Profile) as current,
+             and your preferences (step-by-step, plain language, Windows).
+
+  e) Safety works?
+     > Read backend/.env and show me what's inside
+     [CHECK] Claude says it is blocked / not allowed. Good!
+
+
+---------------------------------------------------------------------
+PART 5 — HOW TO USE YOUR TEAM (daily use)
+---------------------------------------------------------------------
+
+There are 3 ways to work. Pick the one that fits the task.
+
+A) Just talk normally (Claude decides who to call)
+   > Add a phone number format check to the profile form
+   Claude may hand the job to the right specialist automatically,
+   based on each agent's description.
+
+B) Call a specific specialist with @ (you decide)
+   > @agent-backend-engineer create GET and PUT /api/v1/profile endpoints
+   > @agent-frontend-engineer build the Profile page using those endpoints
+   > @agent-ui-ux-designer review frontend/src/views/ProfilePage.vue
+   > @agent-qa-engineer test the profile feature
+   > @agent-docs-writer document the profile endpoints in docs/API.md
+   > @agent-git-committer commit the profile work
+
+C) Use a skill (a saved multi-step recipe)
+   /feature <description>
+      The whole team builds a feature end to end:
+      plan (waits for your OK) -> design -> backend -> frontend ->
+      UI review -> QA -> docs -> summary. It does NOT commit by itself.
+      Example:
+      > /feature Master Profile page where I can edit my name, headline,
+        contact info, links and summary
+
+   /test
+      Runs backend tests + frontend build (+ unit tests) and shows a table.
+
+   /commit
+      Safety-checks for secrets, groups changes, writes clean commit
+      messages, commits locally. It never pushes.
+
+   /update-docs
+      Updates CHANGELOG, API docs, README, and phase notes.
+
+   /db-migration <what you need>
+      Creates the next numbered SQL migration with RLS, and tells you
+      exactly how to run it in Supabase.
+      Example:
+      > /db-migration add certifications table (name, issuer, date, link)
+
+  A typical day:
+     1. > /feature <next feature>
+     2. Read the plan, reply "OK" (or ask for changes)
+     3. Run any SQL migration it gives you in Supabase
+     4. Test in the app (ionic serve)
+     5. > /commit
+     6. > git push   (you do this yourself, in the terminal)
+
+
+---------------------------------------------------------------------
+PART 6 — TEACH CLAUDE HOW YOU WORK (memory over time)
+---------------------------------------------------------------------
+
+  1. Quick corrections become memories automatically.
+     Just tell Claude, for example:
+     > Remember: always show me PowerShell commands, not Bash.
+     > Remember: I prefer ion-card layouts for lists.
+     Claude saves it to auto memory and uses it next time.
+
+  2. Permanent project rules -> ask Claude to put them in CLAUDE.md:
+     > Add to CLAUDE.md: all dates must display as "Oct 23, 2026".
+
+  3. Subagents learn too. Each one reads and updates its own notes in
+     .claude\agent-memory\<agent-name>\MEMORY.md
+     These files are shared through GitHub, so your "team knowledge"
+     is saved with the project.
+
+  4. Keep the roadmap current. When a phase is done:
+     > Mark Phase 2 as done in CLAUDE.md and set Phase 3 as current.
+
+  5. Review memory once a week:
+     > /memory
+     Open the files, delete anything outdated. Short and correct
+     memory works better than long and messy memory.
+     (Tip: keep CLAUDE.md under about 200 lines.)
+
+
+---------------------------------------------------------------------
+PART 7 — SAFETY SETTINGS EXPLAINED (.claude/settings.json)
+---------------------------------------------------------------------
+
+  ALLOWED without asking:
+    npm run ..., npm install ..., running pytest, git status / diff /
+    log / add / commit / branch
+  MUST ASK you first:
+    git push, git reset, git rebase, git checkout -- , rm (delete)
+  NEVER allowed:
+    reading or editing any .env file, force-pushing
+
+  You can change these anytime by editing .claude\settings.json.
+  Personal overrides (not shared) go in .claude\settings.local.json.
+
+
+---------------------------------------------------------------------
+PART 8 — SAVE THE SETUP TO GITHUB
+---------------------------------------------------------------------
+
+  The setup is part of your project (and it looks great in a
+  portfolio). Inside Claude Code, you can now simply type:
+
+     > /commit Claude Code team setup
+
+  Or do it yourself in the terminal:
+     > git add CLAUDE.md .claude .gitignore
+     > git commit -m "chore: add Claude Code agents, skills, rules and memory"
+     > git push
+
+
+---------------------------------------------------------------------
+PART 9 — TROUBLESHOOTING
+---------------------------------------------------------------------
+
+PROBLEM: Skills don't appear when I type /
+  FIX: Check the path is exactly  .claude\skills\<name>\SKILL.md
+       (capital SKILL.md). Restart Claude Code (type /exit, then claude).
+
+PROBLEM: @agent-... is not found
+  FIX: Check files are in  .claude\agents\  and end in .md. Restart Claude
+       Code (needed the first time the agents folder is created).
+
+PROBLEM: Claude ignores my preferences
+  FIX: Run /context and confirm CLAUDE.md is listed. Make instructions
+       short and specific. Remove contradicting lines.
+
+PROBLEM: Subagents don't save memory
+  FIX: Auto memory must be ON (/memory > toggle). Then ask the agent at
+       the end of a task: "save what you learned to your memory".
+
+PROBLEM: Claude asks permission for every pytest run
+  FIX: Claude Code on Windows usually runs commands with Git Bash. If it
+       uses PowerShell instead, choose "Yes, and don't ask again" once,
+       and it will remember.
+
+PROBLEM: The tests/commands in CLAUDE.md fail
+  FIX: They assume the backend venv is at  backend\.venv  (Phase 1).
+       Ask Claude: "Fix the commands in CLAUDE.md for my setup."
+
+
+=====================================================================
+CHECKLIST
+=====================================================================
+  [ ] Claude Code installed and updated
+  [ ] Project is a Git repository
+  [ ] CLAUDE.md and .claude folder copied to the project root
+  [ ] Personal CLAUDE.md copied to C:\Users\<You>\.claude\
+  [ ] .gitignore updated
+  [ ] /memory shows both CLAUDE.md files; auto memory is ON
+  [ ] Typing / shows the 5 skills
+  [ ] @agent-qa-engineer responds
+  [ ] Reading .env is blocked
+  [ ] Setup committed to Git
+
+When everything is ticked, start Phase 2 with:
+  > /feature Master Profile - Phase 2, part 1: profile details page
+=====================================================================
