@@ -1,0 +1,34 @@
+/* Small, calm motion helpers used across screens.
+   - .fade-in-up : card fades and slides in (set style="--i: 1" to stagger by 60ms each)
+   - .pressable  : shrinks slightly while pressed, shows a clear focus ring for keyboards */
+
+@keyframes fade-in-up {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: none; }
+}
+
+.fade-in-up {
+  animation: fade-in-up 0.35s ease-out both;
+  animation-delay: calc(var(--i, 0) * 60ms);
+}
+
+.pressable {
+  transition: transform 0.15s ease, background-color 0.15s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+.pressable:active { transform: scale(0.97); }
+.pressable:focus-visible {
+  outline: 2px solid var(--ion-color-primary);
+  outline-offset: 2px;
+}
+
+/* Respect "reduce motion": no slides, no scaling, no long transitions. */
+@media (prefers-reduced-motion: reduce) {
+  .fade-in-up { animation: none; }
+  .pressable { transition: none; }
+  .pressable:active { transform: none; }
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

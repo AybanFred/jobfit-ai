@@ -27,11 +27,14 @@ import '@ionic/vue/css/palettes/dark.system.css';
 /* daisyUI themes (Tailwind without its reset), then the bridge to Ionic's colors */
 import './theme/daisy.css';
 import './theme/variables.css';
+import './theme/motion.css';
+import './theme/ui.css';
 
 import { useThemeStore } from './stores/theme';
+import { prefersReducedMotion } from './services/motion';
 
 const app = createApp(App)
-  .use(IonicVue)
+  .use(IonicVue, { animated: !prefersReducedMotion() }) // no page slide animations if the user asked for less motion
   .use(createPinia()) // Pinia must be installed before the router guard runs
   .use(router);
 

@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="JobFit AI">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#6366F1"/>
+      <stop offset="1" stop-color="#8B5CF6"/>
+    </linearGradient>
+  </defs>
+  <!-- app tile -->
+  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
+  <!-- resume page with folded corner -->
+  <path fill="#fff" d="M164 108h136l64 64v220a24 24 0 0 1-24 24H164a24 24 0 0 1-24-24V132a24 24 0 0 1 24-24z"/>
+  <path fill="#C7D2FE" d="M300 108v40a24 24 0 0 0 24 24h40z"/>
+  <!-- text lines -->
+  <rect x="180" y="214" width="112" height="18" rx="9" fill="#6366F1" opacity=".35"/>
+  <rect x="180" y="256" width="150" height="18" rx="9" fill="#6366F1" opacity=".22"/>
+  <rect x="180" y="298" width="90" height="18" rx="9" fill="#6366F1" opacity=".22"/>
+  <!-- "fit" check badge -->
+  <circle cx="344" cy="344" r="68" fill="#22C55E" stroke="#fff" stroke-width="16"/>
+  <path d="M314 346l22 22 42-46" fill="none" stroke="#fff" stroke-width="20" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- AI sparkle -->
+  <path fill="#fff" d="M412 78c4 26 22 44 48 48-26 4-44 22-48 48-4-26-22-44-48-48 26-4 44-22 48-48z" transform="translate(-12 -4) scale(.9)"/>
+</svg>
