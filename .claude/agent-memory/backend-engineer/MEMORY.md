@@ -1,0 +1,2 @@
+- [Backend conventions and pitfalls](backend_conventions.md) — test settings override, Anthropic mocking, resume import design notes
+- [Migrations and Storage conventions](project_migrations_storage.md) — numbering, private buckets, own-folder policies, avatars bucket, no docs/ yet

@@ -1,0 +1,4 @@
+- [UI shell patterns](ui-shell-patterns.md) — tabs, shared components, haptics/motion/error helpers, pitfalls
+- [Profile screens patterns](profile-screens-patterns.md) — Phase 2 store, composable, shared components, sort rules, pitfalls
+- [Resume import patterns](resume-import-patterns.md) — upload helper, in-memory draft store, merge/dup rules, level=null skills, test pitfalls
+- [UI redesign and avatar](ui-redesign-and-avatar.md) — ui.css tokens, IconChip/UserAvatar/EmptyState, profile photo design, daisyUI class collisions
