@@ -14,7 +14,9 @@ def health(settings: Settings = Depends(get_settings)):
         "status": "ok",
         "env": settings.app_env,
         "supabase_configured": bool(settings.supabase_url and settings.supabase_service_key),
-        "ai_configured": bool(settings.anthropic_api_key),
+        "ai_configured": bool(
+            settings.groq_api_key or settings.gemini_api_key or settings.openai_api_key
+        ),
     }
 
 

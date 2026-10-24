@@ -17,7 +17,17 @@ class Settings(BaseSettings):
 
     cors_origins: str = "http://localhost:8100,http://localhost:5173"
 
-    anthropic_api_key: str = ""
+    anthropic_api_key: str = ""  # reserved for Phase 3
+
+    # Free-tier AI providers used by resume import. Empty key = provider not set up.
+    groq_api_key: str = ""
+    gemini_api_key: str = ""
+    openai_api_key: str = ""
+    # Models the user may choose (comma-separated). Model IDs change over time, so
+    # they live in env, not in code. Only these are ever sent to a provider.
+    groq_models: str = "openai/gpt-oss-120b,openai/gpt-oss-20b"
+    gemini_models: str = "gemini-3.8-flash,gemini-3.5-flash-lite"
+    openai_models: str = "gpt-4o-mini"
 
     @property
     def cors_origin_list(self) -> list[str]:
