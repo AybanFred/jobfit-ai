@@ -9,6 +9,8 @@ vi.mock('@capacitor/core', () => ({ Capacitor: { isNativePlatform: () => native.
 import { api } from '@/services/api';
 import { downloadDocument, exportDocument, openDownload } from '@/services/documents';
 import StatusBadge from '@/components/StatusBadge.vue';
+import StatusMenu from '@/components/StatusMenu.vue';
+import { popoverController } from '@ionic/vue';
 
 const apiMock = vi.mocked(api);
 
@@ -82,5 +84,24 @@ describe('StatusBadge', () => {
     expect(w.classes()).toContain('ion-color-warning');
     await w.trigger('click');
     expect(w.emitted('click')).toHaveLength(1);
+  });
+});
+
+describe('StatusMenu', () => {
+  const stubs = { IonIcon: true };
+
+  it('lists every status and marks the current one', () => {
+    const w = mount(StatusMenu, { props: { current: 'applied', title: 'Backend Engineer' }, global: { stubs } });
+    const items = w.findAll('[role="menuitemradio"]');
+    expect(items.map((i) => i.text())).toEqual(['Saved', 'Applied', 'Interview', 'Offer', 'Rejected', 'Ghosted']);
+    expect(items.filter((i) => i.attributes('aria-checked') === 'true').map((i) => i.text())).toEqual(['Applied']);
+    expect(w.attributes('aria-label')).toBe('Change status of Backend Engineer');
+  });
+
+  it('closes the popover with the picked status', async () => {
+    const dismiss = vi.spyOn(popoverController, 'dismiss').mockResolvedValue(true);
+    const w = mount(StatusMenu, { props: { current: 'saved' }, global: { stubs } });
+    await w.findAll('[role="menuitemradio"]')[2].trigger('click');
+    expect(dismiss).toHaveBeenCalledWith('interview', 'select');
   });
 });

@@ -112,7 +112,7 @@
                     <span class="sub">{{ appCompanyLine(a) }}</span>
                   </td>
                   <td>
-                    <StatusBadge :status="a.status" interactive :busy="!!store.saving[a.id]" @click.stop="pickStatus(a)" />
+                    <StatusBadge :status="a.status" interactive :busy="!!store.saving[a.id]" @click.stop="pickStatus(a, $event)" />
                   </td>
                   <td class="num">
                     <span v-if="scoreText(a.match?.score)" class="score">{{ scoreText(a.match?.score) }}</span>
@@ -174,7 +174,7 @@
                 :status="a.status"
                 interactive
                 :busy="!!store.saving[a.id]"
-                @click="pickStatus(a)"
+                @click="pickStatus(a, $event)"
               />
             </li>
           </ul>

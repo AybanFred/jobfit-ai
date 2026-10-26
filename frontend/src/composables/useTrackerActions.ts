@@ -1,7 +1,9 @@
+import { popoverController } from '@ionic/vue';
+import StatusMenu from '@/components/StatusMenu.vue';
 import { chooseAction } from '@/services/feedback';
 import { tapHaptic } from '@/services/haptics';
 import {
-  DOC_LABEL, STATUSES, appTitle, statusLabel,
+  DOC_LABEL, appTitle,
   type AppJob, type AppStatus, type DocType, type ExportFormat,
 } from '@/services/trackerLogic';
 import { useTrackerStore } from '@/stores/tracker';
@@ -12,14 +14,24 @@ type AppLike = { id: string; status: AppStatus; job: Pick<AppJob, 'title'> };
 export function useTrackerActions() {
   const store = useTrackerStore();
 
-  /** Opens the status menu and saves the choice. Resolves to the new status, or null (cancelled or failed). */
-  async function pickStatus(app: AppLike): Promise<AppStatus | null> {
+  /** Opens the status menu next to the tapped badge and saves the choice.
+   *  Resolves to the new status, or null (cancelled or failed). */
+  async function pickStatus(app: AppLike, event: Event): Promise<AppStatus | null> {
     void tapHaptic();
-    const picked = await chooseAction<AppStatus>(
-      'Change status',
-      STATUSES.map((s) => ({ value: s, text: statusLabel(s), current: s === app.status })),
-      appTitle(app),
-    );
+    // Open towards the middle of the screen, so the menu never hangs off the edge.
+    const target = event.target instanceof Element ? event.target : null;
+    const onRight = !!target && target.getBoundingClientRect().left > window.innerWidth / 2;
+    const popover = await popoverController.create({
+      component: StatusMenu,
+      componentProps: { current: app.status, title: appTitle(app) },
+      event,
+      side: 'bottom',
+      alignment: onRight ? 'end' : 'start',
+      arrow: false,
+      cssClass: 'status-popover',
+    });
+    await popover.present();
+    const { data: picked } = await popover.onDidDismiss<AppStatus>();
     if (!picked || picked === app.status) return null;
     return (await store.changeStatus(app.id, picked)) ? picked : null;
   }

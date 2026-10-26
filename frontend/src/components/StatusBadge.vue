@@ -56,6 +56,8 @@ const colorClass = computed(() => [`ion-color-${statusColor(props.status)}`, { b
   border: 1px solid color-mix(in oklab, var(--ion-color-base) 30%, transparent);
 }
 button.status-badge { cursor: pointer; }
+/* clicks always land on the button itself, so the status menu lines up with the whole badge */
+button.status-badge > * { pointer-events: none; }
 /* a comfortable tap target without making the badge look bigger */
 button.status-badge { position: relative; }
 button.status-badge::after { content: ''; position: absolute; inset: -7px -4px; }

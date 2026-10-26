@@ -163,7 +163,17 @@ ion-popover.ui-popover {
 ion-popover.model-popover ion-item.item-disabled,
 ion-popover.ui-popover ion-item.item-disabled { opacity: 0.6; }
 
-/* pick-one menus from the bottom (Tracker: change status, download format) */
+/* Tracker: the floating "Change status" menu next to a status badge (StatusMenu.vue) */
+ion-popover.status-popover {
+  --width: 210px;
+  --background: var(--color-base-100);
+  --border-radius: 14px;
+  --box-shadow: var(--ui-shadow-lg);
+  --offset-y: 6px;
+}
+ion-popover.status-popover::part(content) { border: 1px solid var(--ui-line); }
+
+/* pick-one menus from the bottom (Tracker: download format) */
 ion-action-sheet.ui-sheet {
   --background: var(--color-base-100);
   --color: var(--ui-text-soft);
