@@ -1,2 +1,2 @@
-- [Backend conventions and pitfalls](backend_conventions.md) — test settings override, AI mocking, tailoring guard, fake_supabase, tracker/export, reportlab pitfalls
-- [Migrations and Storage conventions](project_migrations_storage.md) — numbering (0001-0004), private buckets, own-folder policies, export paths, migrate-before-deploy
+- [Backend conventions and pitfalls](backend_conventions.md) — test settings, AI mocking, tailoring guard, fake_supabase, tracker/export, email docs + recruiter address
+- [Migrations and Storage conventions](project_migrations_storage.md) — numbering (0001-0005), enum-in-transaction pitfall, private buckets, export paths, migrate-before-deploy

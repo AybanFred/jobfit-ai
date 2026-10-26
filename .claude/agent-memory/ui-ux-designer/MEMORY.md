@@ -1,0 +1,2 @@
+- [Email feature design](project_email_feature_design.md) — Email tab order, inline "Sent it?" banner, confirm regenerate, Copy feedback (2026-10-26)
+- [UI conventions observed](project_ui_conventions.md) — tokens, form/button/toast/empty-state patterns and wording style already in the app
