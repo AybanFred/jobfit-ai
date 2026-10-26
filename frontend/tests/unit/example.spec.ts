@@ -1,10 +1,18 @@
 import { mount } from '@vue/test-utils'
-import HomePage from '@/views/HomePage.vue'
+import ComingSoon from '@/components/ComingSoon.vue'
 import { describe, expect, test } from 'vitest'
 
-describe('HomePage.vue', () => {
-  test('renders home vue', () => {
-    const wrapper = mount(HomePage)
-    expect(wrapper.text()).toMatch('Ready to create an app?')
+describe('ComingSoon.vue', () => {
+  test('shows the title, description and the coming soon pill', () => {
+    const wrapper = mount(ComingSoon, {
+      props: {
+        icon: 'icon-path',
+        title: 'Paste a job description',
+        description: 'Soon you will paste a job post here.',
+      },
+    })
+    expect(wrapper.text()).toContain('Paste a job description')
+    expect(wrapper.text()).toContain('Soon you will paste a job post here.')
+    expect(wrapper.text()).toContain('Coming soon')
   })
 })
