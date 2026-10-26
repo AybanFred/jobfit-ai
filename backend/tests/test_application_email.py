@@ -7,7 +7,7 @@ from fastapi import HTTPException
 
 from app.core.config import Settings, get_settings
 from app.main import app
-from app.services import tailor, tailor_validator
+from app.services import application_email, tailor, tailor_validator
 from tests.fake_supabase import FakeSupabase
 from tests.test_applications import (
     OTHER, SECRET, URL, USER, _auth, _get, _patch, add_app, client, ts,
@@ -357,3 +357,139 @@ def test_write_email_load_failure_is_clean_500(env):
     assert r.status_code == 500
     assert r.json() == {"detail": "Could not load the application"}
     assert env.ai.calls == []
+
+
+# ---- only the newest 10 email versions are kept ------------------------------------
+
+def _old(i: int) -> str:
+    # Older than anything the fake inserts ("2026-01-01T00:00:NN").
+    return f"2025-06-01T{i // 60:02d}:{i % 60:02d}:00+00:00"
+
+
+def test_write_email_keeps_only_the_newest_ten_versions_of_that_job(env):
+    old = [add_email(env.db, env.ids.job_id, _old(i)) for i in range(12)]  # oldest first
+    other_job = add_app(env.db, 1)
+    other_job_emails = [add_email(env.db, other_job.job_id, _old(i)) for i in range(11)]
+    theirs = add_email(env.db, env.ids.job_id, _old(0), user=OTHER)  # a foreign row, same job id
+
+    r = _write(env.ids.app_id)
+    assert r.status_code == 201, r.text
+
+    mine = {d["id"] for d in _email_rows(env.db)
+            if d["job_post_id"] == env.ids.job_id and d["user_id"] == USER}
+    assert len(mine) == application_email.EMAIL_VERSIONS_KEPT == 10
+    assert mine == {r.json()["id"], *old[3:]}  # the new one + the 9 newest old ones
+    # other jobs, other users and the resume / cover letter are never touched
+    ids = {d["id"] for d in env.db.rows("generated_docs")}
+    assert set(other_job_emails) <= ids and theirs in ids
+    assert {env.ids.resume_id, env.ids.letter_id} <= ids
+    [delete] = [c for c in env.db.calls if c[:2] == ("generated_docs", "delete")]
+    filters = dict((col, val) for col, val in delete[2] if not isinstance(val, tuple))
+    assert filters == {"user_id": USER, "job_post_id": env.ids.job_id, "type": "email"}
+    assert _get(f"/{env.ids.app_id}").json()["email"]["id"] == r.json()["id"]
+
+
+def test_write_email_with_few_versions_removes_nothing(env):
+    old = [add_email(env.db, env.ids.job_id, _old(i)) for i in range(9)]
+    r = _write(env.ids.app_id)
+    assert r.status_code == 201
+    assert {d["id"] for d in _email_rows(env.db)} == {r.json()["id"], *old}
+    assert not [c for c in env.db.calls if c[:2] == ("generated_docs", "delete")]
+
+
+def test_write_email_keeps_the_new_version_even_if_its_timestamp_sorts_oldest(env):
+    # Clock skew: the fake's insert timestamp sorts OLDER than these seeded rows.
+    newer = [add_email(env.db, env.ids.job_id, ts(100 + i)) for i in range(12)]
+    r = _write(env.ids.app_id)
+    assert r.status_code == 201
+    assert {d["id"] for d in _email_rows(env.db)} == {r.json()["id"], *newer[3:]}
+
+
+def test_write_email_prune_failure_is_not_fatal(env, capsys):
+    old = [add_email(env.db, env.ids.job_id, _old(i)) for i in range(12)]
+    env.db.fail_on.add(("generated_docs", "delete"))
+    r = _write(env.ids.app_id)
+    assert r.status_code == 201
+    assert len(_email_rows(env.db)) == 13 and set(old) <= {d["id"] for d in _email_rows(env.db)}
+    out = capsys.readouterr().out
+    assert "could not remove old email versions: RuntimeError" in out
+    assert "secret-key-123" not in out and "Jane" not in out
+
+
+# ---- the original resume was deleted ----------------------------------------------
+
+def _tailored_log(db, app_id: str, source: str, user: str = USER) -> None:
+    db.tables.setdefault("activity_logs", []).append({
+        "id": len(db.tables["activity_logs"]) + 1, "user_id": user, "action": "job.tailored",
+        "entity": "application", "entity_id": app_id, "created_at": ts(0),
+        "metadata": {"job_post_id": "x", "source": source, "template": "harvard"},
+    })
+
+
+def _deleted_resume_app(env, log_source: str | None = "resume"):
+    """An application whose documents lost their source_resume_id (on delete set null)."""
+    ids = add_app(env.db, 1)
+    env.db.rows("job_posts")[-1]["raw_text"] = JOB_TEXT
+    if log_source:
+        _tailored_log(env.db, ids.app_id, log_source)
+    return ids
+
+
+def test_write_email_after_the_resume_was_deleted_uses_the_profile_and_says_so(env):
+    ids = _deleted_resume_app(env)
+    _seed_profile(env.db)
+    r = _write(ids.app_id)
+    assert r.status_code == 201, r.text
+    warnings = r.json()["warnings"]
+    assert warnings[0] == application_email.RESUME_DELETED_WARNING
+    assert warnings[0] == ("The email uses your Master Profile because the original resume "
+                           "is no longer saved.")
+    assert all(w.startswith(tailor_validator.EMAIL_WARNING_PREFIX) for w in warnings)
+    assert "Backend: Python" in env.ai.calls[0]["user"]  # the Master Profile text
+    match = next(m for m in env.db.rows("match_results") if m["job_post_id"] == ids.job_id)
+    assert application_email.RESUME_DELETED_WARNING in match["warnings"]
+    assert env.logged[0][1]["metadata"]["warnings"] == len(warnings)
+
+
+@pytest.mark.parametrize("log_source", ["profile", None], ids=["made-from-profile", "no-log"])
+def test_write_email_from_the_profile_never_claims_a_deleted_resume(env, log_source):
+    ids = _deleted_resume_app(env, log_source)
+    _seed_profile(env.db)
+    r = _write(ids.app_id)
+    assert r.status_code == 201, r.text
+    assert application_email.RESUME_DELETED_WARNING not in r.json()["warnings"]
+
+
+def test_another_users_log_never_counts(env):
+    ids = _deleted_resume_app(env, log_source=None)
+    _tailored_log(env.db, ids.app_id, "resume", user=OTHER)
+    _seed_profile(env.db)
+    r = _write(ids.app_id)
+    assert r.status_code == 201
+    assert application_email.RESUME_DELETED_WARNING not in r.json()["warnings"]
+
+
+def test_a_failed_log_lookup_is_not_fatal(env, capsys):
+    ids = _deleted_resume_app(env)
+    _seed_profile(env.db)
+    env.db.fail_on.add("activity_logs")
+    r = _write(ids.app_id)
+    assert r.status_code == 201, r.text
+    assert application_email.RESUME_DELETED_WARNING not in r.json()["warnings"]
+    assert "could not read the tailoring log: RuntimeError" in capsys.readouterr().out
+
+
+def test_the_log_is_not_read_while_the_source_resume_still_exists(env):
+    assert _write(env.ids.app_id).status_code == 201
+    assert not [c for c in env.db.calls if c[0] == "activity_logs"]
+
+
+def test_deleted_resume_and_empty_master_profile_is_a_clear_422(env):
+    ids = _deleted_resume_app(env)
+    env.db.tables["profiles"] = [{"id": USER, "full_name": "Jane Doe", "links": {}}]
+    r = _write(ids.app_id)
+    assert r.status_code == 422
+    detail = r.json()["detail"]
+    assert "resume this application was made from has been deleted" in detail
+    assert "Master Profile is empty" in detail
+    assert env.ai.calls == [] and _email_rows(env.db) == []

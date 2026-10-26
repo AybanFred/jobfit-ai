@@ -16,6 +16,6 @@ Jobs tab = one form -> Go -> working; on success the store clears link+text (kee
 
 Pitfalls:
 - Vue sets `value` on Ionic custom elements as a DOM property, not an attribute: `querySelector('ion-segment-button[value=x]')` finds nothing (match `el.value` instead).
-- Material mode uppercases small `fill="clear"` ion-buttons and segment labels; the page uses a `plain-btn` class (`text-transform: none`) for small buttons. Segments left uppercase (same as LoginPage/ThemePicker).
+- Material mode uppercases small `fill="clear"` ion-buttons and segment labels; the page uses a `plain-btn` class (`text-transform: none`) for small buttons. The Jobs resume segment is normal case since 2026-10-26 (uppercase wrapped "MASTER PROFILE"), like the Tracker tabs; LoginPage/ThemePicker segments are still uppercase.
 - Georgia serif shows old-style numerals; previews set `font-variant-numeric: lining-nums`.
 - Tests mock `@/services/supabase` too (jobsLogic -> resumeImport -> api -> supabase; createClient throws without env).

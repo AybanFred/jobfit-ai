@@ -347,16 +347,21 @@ export const validateRecruiterEmail = (value: string | null | undefined): string
  * Subject and message are fully encoded (&, ?, #, %, + and non-English letters are safe) and line breaks
  * become CRLF, as RFC 6068 asks. The address is encoded too, except the "@". An empty address gives
  * "mailto:?subject=…", so the user picks the recipient in the email app.
+ * Returns null when the text cannot be put in a link (a broken character makes encodeURIComponent throw).
  */
-export function buildMailtoUrl(to: string | null | undefined, subject: string, body: string): string {
+export function buildMailtoUrl(to: string | null | undefined, subject: string, body: string): string | null {
   const address = cleanEmail(to) ?? '';
   const params: string[] = [];
   const s = cleanEmailSubject(subject);
   const b = (body ?? '').replace(/\r\n?/g, '\n').replace(/\n/g, '\r\n');
-  if (s) params.push(`subject=${encodeURIComponent(s)}`);
-  if (b.trim()) params.push(`body=${encodeURIComponent(b)}`);
-  const head = `mailto:${encodeURIComponent(address).replace(/%40/g, '@')}`;
-  return params.length ? `${head}?${params.join('&')}` : head;
+  try {
+    if (s) params.push(`subject=${encodeURIComponent(s)}`);
+    if (b.trim()) params.push(`body=${encodeURIComponent(b)}`);
+    const head = `mailto:${encodeURIComponent(address).replace(/%40/g, '@')}`;
+    return params.length ? `${head}?${params.join('&')}` : head;
+  } catch {
+    return null; // URIError: a lone surrogate (half of an emoji) in the text
+  }
 }
 
 export interface EmailSendState {
@@ -371,11 +376,15 @@ export const OPEN_EMAIL_HINTS = [
   'Nothing opened? Copy the text above and paste it into your email app.',
 ] as const;
 
+export const CANNOT_OPEN_EMAIL_HINT = 'This email cannot be opened in your email app. Copy the text above and paste it there.';
+
 /** Whether "Open in email app" can be used, its link, and the hint under it. */
 export function emailSendState(to: string, subject: string, body: string): EmailSendState {
   if (!body.trim()) return { href: null, hints: ['There is no message to send yet. Write a new version first.'] };
   if (validateRecruiterEmail(to)) return { href: null, hints: ['Please fix the email address above first.'] };
-  return { href: buildMailtoUrl(to, subject, body), hints: [...OPEN_EMAIL_HINTS] };
+  const href = buildMailtoUrl(to, subject, body);
+  if (!href) return { href: null, hints: [CANNOT_OPEN_EMAIL_HINT] };
+  return { href, hints: [...OPEN_EMAIL_HINTS] };
 }
 
 // ---------- Filtering, sorting and counting ----------
@@ -590,10 +599,13 @@ export function friendlyTrackerError(e: unknown, action: TrackerAction): string 
 /** 'first' = there is no email yet; 'regenerate' = a new version of the email that is shown now. */
 export type EmailWriteMode = 'first' | 'regenerate';
 
+/** Added to "Unknown AI model": the Email tab uses the model chosen on the Jobs tab. */
+export const CHOOSE_OTHER_MODEL = 'Please choose another AI model on the Jobs tab.';
+
 /**
  * Writing the email failed. Busy, offline and session problems get their own sentence; "not set up" and
- * "unknown model" show the backend's short sentence; anything else says it failed (and, for a new
- * version, that the current email is still there).
+ * "unknown model" show the backend's short sentence (the second one says where to choose another model);
+ * anything else says it failed (and, for a new version, that the current email is still there).
  */
 export function friendlyEmailError(e: unknown, mode: EmailWriteMode): string {
   const fallback = mode === 'first'
@@ -606,6 +618,7 @@ export function friendlyEmailError(e: unknown, mode: EmailWriteMode): string {
   if (status === 401 || status === 403) return 'Your session has ended. Please log in again.';
   if (status === 404) return 'We could not find this application. It may have been deleted.';
   if (status === 429) return 'The AI service is busy. Please try again in a minute.';
+  if (status === 400 && /\bmodel\b/i.test(detail)) return `${/[.!?]$/.test(detail) ? detail : `${detail}.`} ${CHOOSE_OTHER_MODEL}`;
   if (status === 400 || status === 422 || status === 503) return detail || fallback;
   return fallback;
 }

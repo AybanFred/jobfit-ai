@@ -28,6 +28,15 @@ let epoch = 0;
 let listRun = 0;
 const detailRuns = new Map<string, number>();
 const patchRuns = new Map<string, number>();
+/**
+ * Goes up every time a save starts or ends. A refresh notes it when it starts: if a save of that application
+ * started or ended since, the answer may hold older values, so the status, dates, notes and address on screen stay.
+ */
+let patchClock = 0;
+/** patchClock at the last time a save of this application started or ended. */
+const patchTouched = new Map<string, number>();
+const touchPatch = (id: string) => { patchTouched.set(id, ++patchClock); };
+const patchedSince = (id: string, since: number) => (patchTouched.get(id) ?? 0) > since;
 /** Changes shown on screen that the server has not confirmed yet, per application. */
 const pending = new Map<string, ApplicationPatch>();
 /** The last values the server confirmed, per application (used to undo a change that failed). */
@@ -128,12 +137,13 @@ export const useTrackerStore = defineStore('tracker', {
     /** Loads (or reloads) the list. A reload keeps the old rows on screen while it waits. */
     async loadList() {
       const myRun = ++listRun;
+      const since = patchClock;
       if (this.listStatus !== 'ready') this.listStatus = 'loading';
       this.listError = '';
       try {
         const list = await listApplications();
         if (myRun !== listRun) return;
-        this.items = list.map((a) => this.withPending(a));
+        this.items = list.map((a) => this.withPending(a, since));
         this.listStatus = 'ready';
       } catch (e) {
         if (myRun !== listRun) return;
@@ -150,6 +160,7 @@ export const useTrackerStore = defineStore('tracker', {
       const myRun = (detailRuns.get(id) ?? 0) + 1;
       detailRuns.set(id, myRun);
       const myEpoch = epoch;
+      const since = patchClock;
       if (this.detailStatus[id] === 'deleted') delete this.details[id];
       const cached = !!this.details[id];
       if (!cached) this.detailStatus[id] = 'loading';
@@ -158,10 +169,12 @@ export const useTrackerStore = defineStore('tracker', {
         const d = await getApplication(id);
         if (myEpoch !== epoch || detailRuns.get(id) !== myRun) return;
         const p = pending.get(id);
-        if (!p) confirmed.set(id, editableOf(d));
+        // A save started or ended while this answer was on its way: keep the fields on screen (they are newer).
+        const kept = patchedSince(id, since) ? this.currentFields(id) : null;
+        if (!p && !kept) confirmed.set(id, editableOf(d));
         // An email written while this answer was on its way is newer than the one in the answer: keep it.
         const email = newestEmail(this.details[id]?.email ?? null, d.email);
-        const shown = { ...d, ...p, email };
+        const shown = { ...d, ...kept, ...p, email };
         this.details[id] = shown;
         this.detailStatus[id] = 'ready';
         // Keep the list row in step with what the detail shows.
@@ -196,6 +209,7 @@ export const useTrackerStore = defineStore('tracker', {
       if (!confirmed.has(id)) confirmed.set(id, now);
       const myRun = (patchRuns.get(id) ?? 0) + 1;
       patchRuns.set(id, myRun);
+      touchPatch(id);
       const myEpoch = epoch;
       pending.set(id, { ...pending.get(id), ...patch });
       this.applyFields(id, patch);
@@ -221,6 +235,7 @@ export const useTrackerStore = defineStore('tracker', {
         return message;
       } finally {
         if (myEpoch === epoch) {
+          touchPatch(id);
           const left = (this.saving[id] ?? 1) - 1;
           if (left > 0) this.saving[id] = left;
           else delete this.saving[id];
@@ -299,7 +314,7 @@ export const useTrackerStore = defineStore('tracker', {
       if (this.deletingId) return false;
       const ok = await confirmAction(
         'Delete this application?',
-        'The job, its tailored resume, cover letter and email will be removed. This cannot be undone.',
+        'The job, its tailored resume, cover letter and application email will be removed. This cannot be undone.',
       );
       if (!ok) return false;
       const myEpoch = epoch;
@@ -358,15 +373,20 @@ export const useTrackerStore = defineStore('tracker', {
       if (d) this.details[id] = { ...d, ...fields };
     },
 
-    /** A row from the server with any unsaved change on top (so a refresh never hides a change in progress). */
-    withPending(a: ApplicationSummary): ApplicationSummary {
+    /**
+     * A row from the server with any unsaved change on top (so a refresh never hides a change in progress).
+     * `since` = patchClock when the refresh started: if a save of this row started or ended since, the row
+     * may be older than the screen, so the fields on screen stay.
+     */
+    withPending(a: ApplicationSummary, since: number): ApplicationSummary {
       const p = pending.get(a.id);
-      if (!p) {
+      const kept = patchedSince(a.id, since) ? this.currentFields(a.id) : null;
+      if (!p && !kept) {
         confirmed.set(a.id, editableOf(a));
         return a;
       }
       if (!confirmed.has(a.id)) confirmed.set(a.id, editableOf(a));
-      return { ...a, ...p };
+      return { ...a, ...kept, ...p };
     },
 
     /** Drops a deleted application from the list. Its detail stays until the screen has closed. */
@@ -376,6 +396,7 @@ export const useTrackerStore = defineStore('tracker', {
       else delete this.detailStatus[id];
       pending.delete(id);
       confirmed.delete(id);
+      patchTouched.delete(id);
       this.cancelEmail(id);
       delete this.emailError[id];
       delete this.emailWarnings[id];
@@ -387,6 +408,7 @@ export const useTrackerStore = defineStore('tracker', {
       listRun += 1;
       detailRuns.clear();
       patchRuns.clear();
+      patchTouched.clear();
       pending.clear();
       confirmed.clear();
       for (const id of [...emailJobs.keys()]) stopEmailRequest(id);

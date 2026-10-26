@@ -243,8 +243,10 @@ def write_email(
     settings: Settings = Depends(get_settings),
 ):
     """Write a new version of the application email with ONE AI call, from the same
-    original resume (or Master Profile) as the documents. Older versions are kept;
-    the detail shows the latest. The recruiter address is never sent to the AI."""
+    original resume (or Master Profile) as the documents. The newest 10 versions per
+    job are kept; the detail shows the latest. If the original resume was deleted, the
+    Master Profile is used and a warning says so. The recruiter address is never sent
+    to the AI."""
     provider, model = resolve_model(settings, body.model_id if body else None)  # 400 / 503
     result = application_email.write_email(
         user.id, str(application_id), settings=settings, model_id=f"{provider}:{model}",

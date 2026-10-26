@@ -46,11 +46,11 @@ const stubs = {
   IonIcon: true,
   IonSpinner: true,
   IonInput: defineComponent({
-    props: ['value', 'errorText', 'label'],
+    props: ['value', 'errorText', 'label', 'helperText'],
     emits: ['ionInput', 'ionBlur'],
     template: `<div class="stub-input"><input :aria-label="label" :value="value"
       @input="$emit('ionInput', { detail: { value: $event.target.value } })" @blur="$emit('ionBlur')" />
-      <span class="err">{{ errorText }}</span></div>`,
+      <span class="helper">{{ helperText }}</span><span class="err">{{ errorText }}</span></div>`,
   }),
   IonButton: defineComponent({
     props: ['disabled', 'href'],
@@ -73,7 +73,7 @@ function mountPanel(markApplied = vi.fn(async () => true)) {
 
 const button = (w: ReturnType<typeof mount>, label: string) =>
   w.findAll('button.stub-btn').find((b) => b.text().includes(label) || b.attributes('aria-label') === label);
-const toInput = (w: ReturnType<typeof mount>) => w.find('input[aria-label="To"]');
+const toInput = (w: ReturnType<typeof mount>) => w.find('input[aria-label="To (recruiter email)"]');
 
 beforeEach(() => {
   setActivePinia(createPinia());
@@ -207,6 +207,54 @@ describe('ApplicationEmailPanel', () => {
     await button(w, 'Not yet, hide this message')!.trigger('click');
     await flushPromises();
     expect(w.text()).not.toContain('Sent it?');
+  });
+
+  it('an email that cannot be put in a link (broken character) disables Open and says to copy the text', () => {
+    seed({ email: { ...EMAIL, body: 'Dear Sam, broken \uD83D end' } });
+    const w = mountPanel(); // must not throw while rendering
+    const open = button(w, 'Open in email app')!;
+    expect(open.attributes('disabled')).toBeDefined();
+    expect(open.attributes('data-href')).toBeUndefined();
+    expect(w.text()).toContain('This email cannot be opened in your email app. Copy the text above and paste it there.');
+    expect(button(w, 'Copy message')!.attributes('disabled')).toBeUndefined();
+  });
+
+  it('To: says it is the recruiter address and that it is optional', () => {
+    seed();
+    const w = mountPanel();
+    expect(toInput(w).exists()).toBe(true);
+    expect(w.find('.helper').text()).toBe('Optional. If empty, you choose the recipient in your email app.');
+  });
+
+  it('headings: the warning and attach headings are h2 (same look as before), Open has no dead aria-describedby', () => {
+    seed();
+    const w = mountPanel();
+    const h2s = w.findAll('h2').map((h) => h.text());
+    expect(h2s).toEqual(['Please check these lines', 'Application email', 'Attach your resume and cover letter']);
+    expect(w.findAll('h2.ui-h3').map((h) => h.text())).toEqual(['Please check these lines', 'Attach your resume and cover letter']);
+    expect(w.findAll('h3').map((h) => h.text())).not.toContain('Please check these lines');
+    expect(button(w, 'Open in email app')!.attributes('aria-describedby')).toBeUndefined();
+  });
+
+  it('a new email with warnings moves the focus to "Please check these lines"', async () => {
+    seed({ email: null });
+    apps.writeApplicationEmail.mockResolvedValue({ ...EMAIL, id: 'e2', warnings: ['The email mentions Rust.'] });
+    const w = mountPanel();
+    await button(w, 'Write email')!.trigger('click');
+    await flushPromises();
+    const warn = w.findAll('h2').find((h) => h.text() === 'Please check these lines')!;
+    expect(warn.attributes('tabindex')).toBe('-1');
+    expect(document.activeElement).toBe(warn.element);
+  });
+
+  it('a new email without warnings moves the focus to the "Application email" title', async () => {
+    seed({ email: null, match: { score: 60, matched: [], gaps: [], warnings: [] } });
+    apps.writeApplicationEmail.mockResolvedValue({ ...EMAIL, id: 'e2', warnings: [] });
+    const w = mountPanel();
+    await button(w, 'Write email')!.trigger('click');
+    await flushPromises();
+    expect(w.text()).not.toContain('Please check these lines');
+    expect(document.activeElement).toBe(w.find('h2.email-title').element);
   });
 
   it('"Sent it?" is not shown when the job is already past "Saved"', async () => {

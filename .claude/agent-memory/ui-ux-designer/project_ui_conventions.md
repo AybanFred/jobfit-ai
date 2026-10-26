@@ -15,4 +15,6 @@ Seen in JobsPage.vue, TrackerDetailPage.vue, StatusMenu.vue, ui.css (2026-10-26)
 - Tracker detail: tab-body is a flex column gap 12; each tab with a document has a `.dl-row` of two outline "Download PDF/DOCX" buttons. Empty tab = plain `ui-surface ui-card none` paragraph (the EmptyState illustration is too big for inside a card/tab; use it only for whole-screen empties).
 - Wording: plain, polite, short sentences, ellipsis character in "Saving…"; "Please ..." for requests; "Try again" for retry; no emojis.
 - Working state on Jobs: spinner + rotating status line (5 s each) + "This can take up to 2 minutes. Please keep this screen open." + outline Cancel.
+- Programmatic focus on a heading (tabindex -1) shows a purple ring in Chrome even after touch (seen in email shots); non-interactive focus targets should have `outline: none`.
+- Toasts for AI results (e.g. "Your email is ready") are top-positioned green; status/hint paragraphs under buttons are the way to explain disabled states.
 - Container: ui-page max 560px; detail page 760px. Segments: `.seg` 44px, label 0.82rem, may wrap to two lines.

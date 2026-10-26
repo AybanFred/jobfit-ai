@@ -49,10 +49,12 @@ _EMAIL_COLUMNS = "id, job_post_id, created_at, content"
 
 # A practical email address check (the `email-validator` package is not installed):
 # ASCII local part without leading/trailing/double dots, a domain of valid labels and
-# a top-level domain of letters (or punycode).
-_LOCAL_RE = re.compile(r"^[A-Za-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[A-Za-z0-9!#$%&'*+/=?^_`{|}~-]+)*$")
-_LABEL_RE = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$")
-_TLD_RE = re.compile(r"^(?:[A-Za-z]{2,63}|xn--[A-Za-z0-9-]{1,59})$")
+# a top-level domain of letters (or punycode). Always used with re.fullmatch: "$" would
+# also match before a trailing "\n", so "jane\n@globex.com" used to pass.
+_LOCAL_RE = re.compile(r"[A-Za-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[A-Za-z0-9!#$%&'*+/=?^_`{|}~-]+)*")
+_LABEL_RE = re.compile(r"[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?")
+_TLD_RE = re.compile(r"[A-Za-z]{2,63}|xn--[A-Za-z0-9-]{1,59}")
+_SPACE_OR_CONTROL_RE = re.compile(r"[\s\x00-\x1f\x7f]")
 
 
 # ---------------------------------------------------------------------------
@@ -60,13 +62,16 @@ _TLD_RE = re.compile(r"^(?:[A-Za-z]{2,63}|xn--[A-Za-z0-9-]{1,59})$")
 # ---------------------------------------------------------------------------
 
 def is_email_address(value: str) -> bool:
-    if not value or len(value) > RECRUITER_EMAIL_MAX or value.count("@") != 1:
+    """One plain ASCII address: no spaces, line breaks or control characters anywhere."""
+    if (not isinstance(value, str) or not value or len(value) > RECRUITER_EMAIL_MAX
+            or not value.isascii() or _SPACE_OR_CONTROL_RE.search(value)
+            or value.count("@") != 1):
         return False
     local, domain = value.split("@")
     labels = domain.split(".")
-    return (len(local) <= 64 and _LOCAL_RE.match(local) is not None
-            and len(labels) >= 2 and all(_LABEL_RE.match(label) for label in labels)
-            and _TLD_RE.match(labels[-1]) is not None)
+    return (len(local) <= 64 and _LOCAL_RE.fullmatch(local) is not None
+            and len(labels) >= 2 and all(_LABEL_RE.fullmatch(label) for label in labels)
+            and _TLD_RE.fullmatch(labels[-1]) is not None)
 
 
 def clean_recruiter_email(value: str | None) -> str | None:

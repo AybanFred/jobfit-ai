@@ -1,6 +1,6 @@
 ---
 name: backend-conventions-and-pitfalls
-description: Reusable backend/test conventions for JobFit AI (settings override in tests, multi-provider AI layer, resume import, tailoring validator policy, shared Supabase fake)
+description: Reusable backend/test conventions for JobFit AI (settings override in tests, multi-provider AI layer, resume import, tailoring/email validator policy, shared Supabase fake, regex safety, deleted-resume detection)
 metadata:
   type: project
 ---
@@ -34,3 +34,8 @@ metadata:
 - Every email warning starts with "The email" (tailor_validator.EMAIL_WARNING_PREFIX); POST /applications/{id}/email swaps those in match_results.warnings (best effort). Empty email: warning in /tailor, but 502 in the rewrite endpoint (its only job).
 - TailorIn.write_email (default true): false uses `tailor.build_system_prompt(with_email=False)` (= SYSTEM_PROMPT_NO_EMAIL: no email rules/key, saves tokens), skips email validation, saves no email row, adds no email warning; an "email" key the model sends anyway is ignored. recruiter_email is independent of it.
 - Test pitfall: fake insert `created_at` is "2026-01-01T00:00:NN" but test_applications.ts() seeds "2026-03-01...", so freshly inserted rows sort OLDER than seeded ones; seed "older" rows with 2025 dates.
+- Validation pitfall (QA found it, fixed 2026-10-26): Python `$` matches before a trailing "\n", so `re.match("^...$")` accepted "jane\n@x.com". Always use `re.fullmatch` for whole-value checks, plus an explicit whitespace/control-char reject.
+- ReDoS rule for model/user text: bound every quantifier (`{1,300}`), never `^\s*` in MULTILINE (crosses lines), exclude the opener from the inner class (`[^\[\]\n]`, `(?:(?!\1).)`), no `list.pop(0)` loops. Cap raw text first (tailor_validator.EMAIL_RAW_MAX = 20k). The probe script found 5 quadratic spots, not just the reported one, so time ALL regexes on 100k pathological input (timing tests in test_tailor.py, limit 1.5 s).
+- Email rewrite (POST /applications/{id}/email) prunes that job's email rows to the newest 10 after the insert (best effort). The new id is excluded explicitly, because fake (or skewed) timestamps can sort it oldest.
+- `source_resume_id` null is ambiguous (made from the Master Profile OR the resume was deleted later, on delete set null). Tell them apart with the application's "job.tailored" activity log (`entity_id` = application id, `metadata.source`). Missing log -> claim nothing. Used by application_email (warning + clearer 422).
+- Email validator warns (never drops) placeholders ("[Your Name]", "{x}", "<Name>"), links not in source/job (bare domains only with a common lowercase TLD + path, so "Node.js/React" is not a link) and unknown numbers; phones are compared by digits (separators ignored). The greeting check scans the first 3 non-empty lines.

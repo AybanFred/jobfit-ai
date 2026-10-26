@@ -156,17 +156,27 @@
             <p v-if="saveState === 'error'" class="ui-error-text save-error" role="alert">{{ saveMessage }}</p>
           </section>
 
-          <!-- 3. Documents, match and the job post -->
-          <button
-            v-if="warnings.length"
-            type="button"
-            class="ui-pill ui-tone-warning check-pill pressable fade-in-up"
-            style="--i: 2"
-            @click="tab = 'match'"
-          >
-            <ion-icon :icon="alertCircleOutline" aria-hidden="true" />
-            Please check {{ warnings.length }} line{{ warnings.length === 1 ? '' : 's' }} in the Match tab
-          </button>
+          <!-- 3. Documents, match and the job post. Lines to check open their tab. -->
+          <div v-if="warnings.length || emailWarnings.length" class="check-row fade-in-up" style="--i: 2">
+            <button
+              v-if="warnings.length"
+              type="button"
+              class="ui-pill ui-tone-warning check-pill pressable"
+              @click="tab = 'match'"
+            >
+              <ion-icon :icon="alertCircleOutline" aria-hidden="true" />
+              Please check {{ linesText(warnings.length) }} in the Match tab
+            </button>
+            <button
+              v-if="emailWarnings.length"
+              type="button"
+              class="ui-pill ui-tone-warning check-pill pressable"
+              @click="tab = 'email'"
+            >
+              <ion-icon :icon="alertCircleOutline" aria-hidden="true" />
+              Please check {{ linesText(emailWarnings.length) }} in the Email tab
+            </button>
+          </div>
 
           <ion-segment class="seg doc-seg fade-in-up" style="--i: 2" :value="tab" @ionChange="onTab($event.detail.value)">
             <ion-segment-button value="resume"><ion-label>Resume</ion-label></ion-segment-button>
@@ -224,7 +234,7 @@
             <ApplicationEmailPanel
               v-else-if="tab === 'email'"
               :detail="detail"
-              :model-id="jobs.modelId"
+              :model-id="emailModelId"
               :mark-applied="markApplied"
               :active="pageActive"
             />
@@ -264,7 +274,7 @@
               <ion-icon slot="start" :icon="trashOutline" aria-hidden="true" />
               Delete application
             </ion-button>
-            <p class="fine">Removes the job, its resume, cover letter and email from your Tracker.</p>
+            <p class="fine">Removes the job, its resume, cover letter and application email from your Tracker.</p>
           </section>
         </template>
       </div>
@@ -290,6 +300,7 @@ import HarvardResumePreview from '@/components/HarvardResumePreview.vue';
 import JobDetails from '@/components/JobDetails.vue';
 import JobMatchSummary from '@/components/JobMatchSummary.vue';
 import TrackerDateField from '@/components/TrackerDateField.vue';
+import { loadSavedModel } from '@/services/aiModels';
 import { tapHaptic } from '@/services/haptics';
 import { prefersReducedMotion } from '@/services/motion';
 import {
@@ -306,8 +317,11 @@ const TABS: readonly DetailTab[] = ['resume', 'letter', 'email', 'match', 'job']
 const props = defineProps<{ id: string }>();
 
 const store = useTrackerStore();
-// The Email tab writes with the AI model chosen on the Jobs tab (null = the server's default).
+// The Email tab writes with the AI model chosen on the Jobs tab. The jobs store only knows it after the
+// Jobs tab has been opened, so before that the saved choice is used (null = the server's default).
 const jobs = useJobsStore();
+const savedModelId = ref(loadSavedModel());
+const emailModelId = computed(() => jobs.modelId ?? savedModelId.value);
 const ionRouter = useIonRouter();
 const reduced = prefersReducedMotion();
 const FORMATS: readonly ExportFormat[] = ['pdf', 'docx'];
@@ -320,6 +334,9 @@ const detail = computed(() => store.details[props.id] ?? null);
 const status = computed(() => store.detailStatus[props.id]);
 // Match tab warnings only: lines about the email are shown (and counted) on the Email tab.
 const warnings = computed(() => matchWarningsOf(detail.value?.match?.warnings ?? []));
+// Lines to check in the email shown now (none while a new version is written: the Email tab hides them too).
+const emailWarnings = computed(() => (store.emailWriting[props.id] ? [] : store.emailWarningsFor(props.id)));
+const linesText = (n: number) => `${n} line${n === 1 ? '' : 's'}`;
 const resumeDocId = computed(() => (detail.value ? detailDocId(detail.value, 'resume') : null));
 const letterDocId = computed(() => (detail.value ? detailDocId(detail.value, 'cover_letter') : null));
 
@@ -330,7 +347,8 @@ function onTab(value: unknown) {
 
 /** False while another screen is in front (Ionic keeps this page in memory). */
 const pageActive = ref(true);
-const markApplied = () => save({ status: 'applied' });
+// "Sent it?" on the Email tab: a failure is shown in its banner only (not on the Progress card, off screen).
+const markApplied = async () => !(await store.patchApplication(props.id, { status: 'applied' }));
 
 // ----- saving (status, dates, notes) -----
 type SaveState = 'idle' | 'saved' | 'error';
@@ -420,6 +438,7 @@ async function onRefresh(event: CustomEvent) {
 // Every time the screen is shown, (re)load it. A cached copy stays on screen meanwhile.
 onIonViewWillEnter(() => {
   pageActive.value = true;
+  savedModelId.value = loadSavedModel(); // it may have been changed on another tab
   void store.loadDetail(props.id);
 });
 onIonViewWillLeave(() => {
@@ -464,7 +483,8 @@ onIonViewWillLeave(() => {
 .save-error { margin: 12px 0 0; }
 
 /* documents */
-.check-pill { align-self: flex-start; min-height: 36px; cursor: pointer; font: inherit; font-size: 0.82rem; font-weight: 650; }
+.check-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.check-pill { min-height: 36px; cursor: pointer; font: inherit; font-size: 0.82rem; font-weight: 650; text-align: left; }
 .check-pill ion-icon { font-size: 16px; }
 .seg { min-height: 44px; --background: var(--ui-soft); border-radius: 14px; }
 .seg ion-segment-button { min-width: 0; --padding-start: 4px; --padding-end: 4px; }

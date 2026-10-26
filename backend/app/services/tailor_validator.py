@@ -13,10 +13,13 @@ After the model answers, `validate` checks every part against the source:
     that is not in the source, and a cover letter that mentions a gap skill.
 
 `validate_email_draft` checks the short application email ({subject, body}):
-markdown is stripped and lengths capped; a greeting naming a person who is not
-in the job text becomes "Dear Hiring Manager,"; gap skills, numbers and email
-addresses that are not in the source (or job text) are WARNED. An empty email is
-a warning, not an error. Every email warning starts with "The email".
+the raw text is cut to EMAIL_RAW_MAX, markdown is stripped and lengths capped; the
+first greeting line (within the first few lines) naming a person who is not in the
+job text becomes "Dear Hiring Manager,"; placeholders ("[Your Name]", "{company}"),
+gap skills, numbers, links and email addresses that are not in the source (or job
+text) are WARNED. Phone numbers are compared by their digits, so separators do not
+matter. An empty email is a warning, not an error. Every email warning starts with
+"The email".
 
 Matching is the same word-boundary matcher as resume import and job parsing
 (`_Source.has_text`), so "Go" never matches inside "Google".
@@ -534,27 +537,52 @@ def resume_is_empty(resume: dict) -> bool:
 
 SUBJECT_MAX = 150
 EMAIL_BODY_MAX = 3000
+# The raw model text is cut to this BEFORE any regex runs (the final caps above are
+# applied after markdown stripping). Every regex below is also bounded, so even
+# pathological input such as "[a](" * 10000 stays linear.
+EMAIL_RAW_MAX = 20_000
+GREETING_SCAN_LINES = 3  # the greeting is looked for in the first few non-empty lines
 EMAIL_WARNING_PREFIX = "The email"  # every email warning starts with this
 EMAIL_EMPTY_WARNING = "The email is empty. Use “Write a new version” in the Tracker."
 EMAIL_GREETING_WARNING = ("The email greeting named someone who is not in the job post, "
                           "so it now says “Dear Hiring Manager,”.")
 EMAIL_CONTACT_WARNING = ("The email has an email address that is not in your resume. "
                          "Please check it.")
+_LINK_SHOWN_MAX = 80  # a long link is shortened inside a warning
 
 _EMAIL_KEYS = ("email", "application_email", "applicationEmail")
 _CONTROL_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
-_MD_FENCE_RE = re.compile(r"^\s*```.*$", re.MULTILINE)
+_MD_FENCE_RE = re.compile(r"^[ \t]*```.*$", re.MULTILINE)  # [ \t], not \s: never crosses lines
 _MD_HEADING_RE = re.compile(r"^[ \t]{0,3}#{1,6}[ \t]+", re.MULTILINE)
 _MD_QUOTE_RE = re.compile(r"^[ \t]*>[ \t]?", re.MULTILINE)
 _MD_RULE_RE = re.compile(r"^[ \t]*(?:[-*_][ \t]*){3,}$", re.MULTILINE)
 _MD_BULLET_RE = re.compile(r"^[ \t]*[*+•·▪●][ \t]+", re.MULTILINE)
-_MD_LINK_RE = re.compile(r"\[([^\]\n]+)\]\(([^)\s]+)\)")
-_MD_BOLD_RE = re.compile(r"(\*\*|__)(?=\S)(.+?)(?<=\S)\1")
-_MD_STAR_RE = re.compile(r"(?<![\w*])\*(?=\S)([^*\n]+?)(?<=\S)\*(?![\w*])")
-_MD_UNDERSCORE_RE = re.compile(r"(?<![\w_])_(?=\S)([^_\n]+?)(?<=\S)_(?![\w_])")
-_MD_CODE_RE = re.compile(r"`([^`\n]*)`")
+_MD_LINK_RE = re.compile(r"\[([^\[\]\n]{1,300})\]\(([^()\s]{1,500})\)")
+# The bold text may not contain its own marker, so a scan stops at the next "**".
+_MD_BOLD_RE = re.compile(r"(\*\*|__)(?=\S)((?:(?!\1).){1,300}?)(?<=\S)\1")
+_MD_STAR_RE = re.compile(r"(?<![\w*])\*(?=\S)([^*\n]{1,300}?)(?<=\S)\*(?![\w*])")
+_MD_UNDERSCORE_RE = re.compile(r"(?<![\w_])_(?=\S)([^_\n]{1,300}?)(?<=\S)_(?![\w_])")
+_MD_CODE_RE = re.compile(r"`([^`\n]{0,300})`")
 _SUBJECT_PREFIX_RE = re.compile(r"^\s*(?:subject|re)\s*:\s*", re.IGNORECASE)
-_EMAIL_ADDRESS_RE = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
+_EMAIL_ADDRESS_RE = re.compile(r"[A-Za-z0-9._%+-]{1,64}@[A-Za-z0-9.-]{1,253}\.[A-Za-z]{2,63}")
+# "[Your Name]", "[Company]", "{name}", "{{company}}", "<Name>" left in by the model.
+_PLACEHOLDER_RE = re.compile(
+    r"\[[ \t]*[A-Za-z][\w .,'’/&-]{0,40}\]"
+    r"|\{\{?[ \t]*[A-Za-z][\w .,'’/&-]{0,40}\}\}?"
+    r"|<[ \t]*[A-Za-z][\w .,'’/&-]{0,40}>")
+_DOMAIN_LIKE_RE = re.compile(r"[A-Za-z0-9-]\.[A-Za-z]{2,}")  # "<github.com/jane>" is a link
+# A link: with a scheme or "www.", or a bare domain with a common lowercase top-level
+# domain followed by a path ("github.com/jane"). Tech names are not links: "Node.js",
+# "Node.js/React" and "ASP.NET/Core" never match.
+_URL_CHARS = r"[^\s<>()\[\]{}\"'`]"
+_BARE_TLDS = ("com|org|net|io|dev|me|co|app|ai|edu|gov|info|tech|page|site|xyz|"
+              "uk|us|ca|de|fr|es|pt|nl|it|ph|in|au|eu|ly|gg|sh|tv")
+_EMAIL_URL_RE = re.compile(
+    rf"(?<![\w@.-])(?:https?://|www\.){_URL_CHARS}{{1,500}}"
+    rf"|(?<![\w@./-])(?:[A-Za-z0-9-]{{1,63}}\.){{1,10}}(?:{_BARE_TLDS})/{_URL_CHARS}{{0,500}}")
+# Something that looks like a phone number: 7+ digits with spaces, dots, dashes or
+# brackets between them ("555.123.4567", "+1 (555) 123-4567").
+_PHONE_LIKE_RE = re.compile(r"(?<![\w.+])\+?\(?\d[\d \t().-]{5,22}\d(?!\w)")
 _GREETING_RE = re.compile(
     r"^(dear|hello|hi|hey|greetings|good (?:morning|afternoon|day))\b[ \t]*"
     r"([^,:;!\n]*)([,:;!]?)(.*)$", re.IGNORECASE)
@@ -613,7 +641,7 @@ def _email_subject(value) -> str | None:
     text = _scalar(value)
     if not text:
         return None
-    text = re.sub(r"\s+", " ", strip_markdown(text)).strip()
+    text = re.sub(r"\s+", " ", strip_markdown(text[:EMAIL_RAW_MAX])).strip()
     text = _SUBJECT_PREFIX_RE.sub("", text).strip(" \"'“”‘’")
     if not re.search(r"\w", text):
         return None  # only symbols left
@@ -626,10 +654,9 @@ def _email_body(value) -> str | None:
     text = _scalar(value)
     if not text:
         return None
-    text = strip_markdown(text)
+    text = strip_markdown(text[:EMAIL_RAW_MAX])
     lines = [re.sub(r"[ \t]+", " ", line).strip() for line in text.split("\n")]
-    while lines and not lines[0]:
-        lines.pop(0)
+    lines = lines[next((i for i, line in enumerate(lines) if line), len(lines)):]
     if lines and _SUBJECT_PREFIX_RE.match(lines[0]) and lines[0].lower().startswith("subject"):
         lines.pop(0)  # the subject repeated inside the body
     paragraphs: list[str] = []
@@ -670,18 +697,71 @@ def _greeting_is_safe(who: str, ctx: _Ctx, company: str | None) -> bool:
 
 
 def _check_greeting(body: str, ctx: _Ctx, company: str | None) -> str:
-    first, _, after = body.partition("\n")
-    found = _GREETING_RE.match(first)
-    if not found:
-        return body
-    who, punct, rest = found.group(2).strip(" ."), found.group(3), found.group(4).strip()
-    if not punct and len(first) > 60:
-        return body  # a sentence, not a greeting line
-    if _greeting_is_safe(who, ctx, company):
-        return body
-    ctx.warn(EMAIL_GREETING_WARNING)
-    line = DEFAULT_GREETING + (f" {rest}" if rest else "")
-    return f"{line}\n{after}" if after else line
+    """Check the FIRST greeting line ("Dear ...", "Hi ...", "Hello ...") found in the
+    first few non-empty lines (a model may put a name or "To:" line above it)."""
+    lines = body.split("\n")
+    non_empty = 0
+    for index, line in enumerate(lines):
+        if not line.strip():
+            continue
+        non_empty += 1
+        if non_empty > GREETING_SCAN_LINES:
+            break
+        found = _GREETING_RE.match(line)
+        if not found:
+            continue
+        who, punct, rest = found.group(2).strip(" ."), found.group(3), found.group(4).strip()
+        if not punct and len(line) > 60:
+            continue  # a sentence, not a greeting line
+        if _greeting_is_safe(who, ctx, company):
+            return body
+        ctx.warn(EMAIL_GREETING_WARNING)
+        lines[index] = DEFAULT_GREETING + (f" {rest}" if rest else "")
+        return "\n".join(lines)
+    return body
+
+
+def _placeholders(text: str) -> list[str]:
+    """Template gaps such as "[Your Name]" or "{company}" (links and addresses in
+    brackets, e.g. "<github.com/jane>", are not placeholders)."""
+    found: list[str] = []
+    for match in _PLACEHOLDER_RE.finditer(text):
+        value = match.group(0)
+        if _DOMAIN_LIKE_RE.search(value) or value in found:
+            continue
+        found.append(value)
+    return found
+
+
+def _shown_link(link: str) -> str:
+    return link if len(link) <= _LINK_SHOWN_MAX else link[:_LINK_SHOWN_MAX - 1] + "…"
+
+
+def _unknown_links(text: str, ctx: _Ctx) -> list[str]:
+    """Links in the email that are written neither in the resume nor in the job text.
+    Compared without scheme, "www." and a trailing slash; a longer link in the source
+    does not cover a shorter one ("github.com/jane" is not "github.com/janedoe")."""
+    out: list[str] = []
+    for match in _EMAIL_URL_RE.finditer(text):
+        link = match.group(0).rstrip(".,;:!?'\"”’")
+        key = _norm_url(link)
+        if not key or link in out:
+            continue
+        pattern = rf"(?<![a-z0-9.-]){re.escape(key)}(?![a-z0-9_-])"
+        if not (re.search(pattern, ctx.src.urls) or re.search(pattern, ctx.job.urls)):
+            out.append(link)
+    return out
+
+
+def _without_known_phones(text: str, ctx: _Ctx) -> str:
+    """Blank out phone numbers whose digits are in the resume or job text, written with
+    any separators ("555.123.4567" matches "555-123-4567")."""
+    def known(match: re.Match) -> str:
+        digits = re.sub(r"\D", "", match.group(0))
+        if 7 <= len(digits) <= 15 and (digits in ctx.src.digits or digits in ctx.job.digits):
+            return " "
+        return match.group(0)
+    return _PHONE_LIKE_RE.sub(known, text)
 
 
 def validate_email_draft(raw, *, source_text: str, job_text: str, gaps: list[str],
@@ -704,12 +784,18 @@ def validate_email_draft(raw, *, source_text: str, job_text: str, gaps: list[str
     body = _check_greeting(body, ctx, company)
 
     text = f"{subject}\n{body}"
+    placeholders = _placeholders(text)
+    if placeholders:
+        ctx.warn("The email still has placeholder text that you must replace before "
+                 f"sending: {_join(placeholders[:MAX_NAMED])}.")
     hits = mentioned(text, ctx.gaps)
     if hits:
         ctx.warn(f"The email mentions {_join(hits)}, which is not in your resume. "
                  "Please edit it before sending.")
+    links = _unknown_links(text, ctx)
     allowed = ctx.letter_numbers | _numbers(title or "") | _numbers(company or "")
-    extra = [n for n in ctx.unsupported_numbers(text, allowed)
+    number_text = _without_known_phones(_EMAIL_URL_RE.sub(" ", text), ctx)  # links: own check
+    extra = [n for n in ctx.unsupported_numbers(number_text, allowed)
              if not (len(n) >= 7 and n.isdigit() and n in ctx.src.digits)]  # phone formats
     if extra:
         ctx.warn(f"The email has a number that is not in your resume or the job post "
@@ -717,4 +803,8 @@ def validate_email_draft(raw, *, source_text: str, job_text: str, gaps: list[str
     known = ctx.src.text + "\n" + ctx.job.text
     if any(a.lower() not in known for a in _EMAIL_ADDRESS_RE.findall(body)):
         ctx.warn(EMAIL_CONTACT_WARNING)
+    if links:
+        ctx.warn("The email has a link that is not in your resume or the job post "
+                 f"({_join([_shown_link(link) for link in links[:MAX_NAMED]])}). "
+                 "Please check it.")
     return {"subject": subject, "body": body}, ctx.warnings

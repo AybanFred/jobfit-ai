@@ -88,7 +88,4 @@ async function onCopy() {
 .single { font-weight: 600; }
 .multiline { white-space: pre-wrap; font-weight: 400; }
 .empty { font-weight: 400; color: var(--ui-text-soft); }
-@media (min-width: 768px) {
-  .multiline { max-width: 68ch; }
-}
 </style>

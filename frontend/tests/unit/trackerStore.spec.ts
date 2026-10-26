@@ -347,6 +347,10 @@ describe('tracker store: delete', () => {
     vi.mocked(confirmAction).mockResolvedValue(true);
     apps.deleteApplication.mockResolvedValue(undefined);
     expect(await s.removeApplication('a')).toBe(true);
+    expect(confirmAction).toHaveBeenCalledWith(
+      'Delete this application?',
+      'The job, its tailored resume, cover letter and application email will be removed. This cannot be undone.',
+    );
     expect(apps.deleteApplication).toHaveBeenCalledWith('a');
     expect(s.items.map((x) => x.id)).toEqual(['b']);
     expect(s.detailStatus.a).toBe('deleted');
@@ -626,6 +630,86 @@ describe('tracker store: recruiter email', () => {
     second.resolve(summary('a', { status: 'applied', recruiter_email: null }));
     await p2;
     expect(s.details.a.status).toBe('applied');
+  });
+});
+
+describe('tracker store: a refresh that was sent before a save', () => {
+  // The server may have read the row before the save, so its answer can hold the old values.
+
+  it('list: a status saved while the refresh was on its way stays; the next refresh takes the server again', async () => {
+    const s = await loaded([summary('a')]);
+    const refresh = deferred<ApplicationSummary[]>();
+    apps.listApplications.mockReturnValueOnce(refresh.promise);
+    const pr = s.loadList();
+    apps.updateApplication.mockResolvedValue(summary('a', { status: 'applied', applied_at: '2026-03-14T12:00:00Z' }));
+    expect(await s.changeStatus('a', 'applied')).toBe(true);
+    refresh.resolve([summary('a', { status: 'saved', job: { title: 'Renamed job' } })]);
+    await pr;
+    expect(s.items[0].status).toBe('applied');
+    expect(s.items[0].applied_at).toBe('2026-03-14T12:00:00Z');
+    expect(s.items[0].job.title).toBe('Renamed job'); // the rest of the row is fresh
+    // a refresh sent after the save is trusted again (for example a change made on another device)
+    apps.listApplications.mockResolvedValueOnce([summary('a', { status: 'interview' })]);
+    await s.loadList();
+    expect(s.items[0].status).toBe('interview');
+  });
+
+  it('detail: notes and dates saved while the refresh was on its way stay (list row too)', async () => {
+    const s = await loaded([summary('a')]);
+    apps.getApplication.mockResolvedValueOnce(detail('a', { notes: 'Old' }));
+    await s.loadDetail('a');
+    const refresh = deferred<ApplicationDetail>();
+    apps.getApplication.mockReturnValueOnce(refresh.promise);
+    const pr = s.loadDetail('a');
+    apps.updateApplication.mockResolvedValue(summary('a', { notes: 'New', follow_up_at: '2026-03-20T12:00:00Z' }));
+    expect(await s.patchApplication('a', { notes: 'New', follow_up_at: '2026-03-20T12:00:00Z' })).toBe('');
+    refresh.resolve(detail('a', { notes: 'Old', follow_up_at: null, cover_letter: { id: 'c-a', content: { greeting: 'Hi' } } }));
+    await pr;
+    expect(s.details.a.notes).toBe('New');
+    expect(s.details.a.follow_up_at).toBe('2026-03-20T12:00:00Z');
+    expect(s.details.a.cover_letter?.id).toBe('c-a'); // the rest of the detail is fresh
+    expect(s.items[0].notes).toBe('New');
+  });
+
+  it('a save that started before the refresh and ended while it was on its way also wins', async () => {
+    const s = await withDetail({ notes: 'Old' });
+    const save = deferred<ApplicationSummary | null>();
+    apps.updateApplication.mockReturnValue(save.promise);
+    const ps = s.patchApplication('a', { notes: 'New' });
+    const refresh = deferred<ApplicationDetail>();
+    apps.getApplication.mockReturnValueOnce(refresh.promise);
+    const pr = s.loadDetail('a');
+    save.resolve(summary('a', { notes: 'New' }));
+    await ps;
+    refresh.resolve(detail('a', { notes: 'Old' }));
+    await pr;
+    expect(s.details.a.notes).toBe('New');
+  });
+
+  it('the old answer does not become the value an undo goes back to', async () => {
+    const s = await withDetail();
+    const refresh = deferred<ApplicationDetail>();
+    apps.getApplication.mockReturnValueOnce(refresh.promise);
+    const pr = s.loadDetail('a');
+    apps.updateApplication.mockResolvedValueOnce(summary('a', { status: 'applied' }));
+    await s.patchApplication('a', { status: 'applied' });
+    refresh.resolve(detail('a', { status: 'saved' }));
+    await pr;
+    apps.updateApplication.mockRejectedValueOnce(new Error('API 500: x'));
+    expect(await s.patchApplication('a', { status: 'interview' })).not.toBe('');
+    expect(s.details.a.status).toBe('applied'); // back to what the server confirmed, not the old answer
+  });
+
+  it('a failed save while the refresh was on its way leaves the saved values', async () => {
+    const s = await withDetail({ notes: 'Old' });
+    const refresh = deferred<ApplicationDetail>();
+    apps.getApplication.mockReturnValueOnce(refresh.promise);
+    const pr = s.loadDetail('a');
+    apps.updateApplication.mockRejectedValueOnce(new Error('API 500: x'));
+    expect(await s.patchApplication('a', { notes: 'New' })).not.toBe('');
+    refresh.resolve(detail('a', { notes: 'Old' }));
+    await pr;
+    expect(s.details.a.notes).toBe('Old');
   });
 });
 

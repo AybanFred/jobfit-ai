@@ -10,7 +10,7 @@ from fastapi.testclient import TestClient
 from app.core.config import Settings, get_settings
 from app.main import app
 from app.services import tailor, tailor_validator
-from app.services.applications import clean_recruiter_email
+from app.services.applications import clean_recruiter_email, is_email_address
 from tests.fake_supabase import FakeSupabase
 
 SECRET = "test-secret-at-least-32-characters-long"
@@ -739,6 +739,29 @@ def test_recruiter_email_errors_are_clear():
         clean_recruiter_email("jane@globex")
 
 
+@pytest.mark.parametrize("value", [
+    "jane@globex.com\n", "jane\n@globex.com", "jane@globex\n.com", "jane@glo\nbex.com",
+    "jane@globex.com\r", "jane@globex.com\t", "ja\x0bne@globex.com", "jane@globex.com\x7f",
+    "jane@globex.com\x00", "jane@globex.co m", "jane@globex.com ",
+], ids=lambda v: repr(v))
+def test_addresses_with_whitespace_or_control_characters_are_invalid(value):
+    # "$" used to match before a trailing "\n"; fullmatch + an explicit check now.
+    assert is_email_address(value) is False
+
+
+@pytest.mark.parametrize("value", [
+    "jane\n@globex.com", "jane@globex\n.com", "jane@glo\rbex.com", "ja\x0bne@globex.com",
+    "jane@globex.com\x00",
+], ids=lambda v: repr(v))
+def test_clean_recruiter_email_rejects_inner_line_breaks_and_controls(value):
+    with pytest.raises(ValueError, match="not a valid email address"):
+        clean_recruiter_email(value)
+
+
+def test_surrounding_whitespace_is_still_trimmed():
+    assert clean_recruiter_email("\n jane@globex.com \r\n") == "jane@globex.com"
+
+
 # ---- application email: tailoring --------------------------------------------
 
 def test_prompt_asks_for_the_email_with_its_rules(env):
@@ -981,3 +1004,173 @@ def test_empty_email_is_a_warning_not_an_error(raw):
         "never-the-letter", "not-a-dict"])
 def test_split_email_finds_the_email_object(raw, expected):
     assert tailor_validator.split_email(raw) == expected
+
+
+# ---- application email: greeting further down, placeholders, links, phones -----
+
+def test_email_greeting_below_a_name_line_is_checked():
+    email, warnings = _check_email("Jane Doe\nDear John Brown,\n\nI am applying.")
+    assert email["body"] == "Jane Doe\nDear Hiring Manager,\n\nI am applying."
+    assert warnings == [tailor_validator.EMAIL_GREETING_WARNING]
+
+
+def test_email_greeting_in_a_later_paragraph_is_checked():
+    email, warnings = _check_email("To: Globex Inc\n\nHi Bob, thanks for reading.\n\nJane Doe")
+    assert email["body"] == "To: Globex Inc\n\nDear Hiring Manager, thanks for reading.\n\nJane Doe"
+    assert warnings == [tailor_validator.EMAIL_GREETING_WARNING]
+
+
+def test_a_long_sentence_starting_with_hi_is_skipped_for_the_next_greeting_line():
+    email, warnings = _check_email(
+        "Hi I am Jane and I would like to apply for the role you posted last week\n"
+        "Dear John Brown,\n\nThanks.")
+    assert email["body"].split("\n")[1] == "Dear Hiring Manager,"
+    assert warnings == [tailor_validator.EMAIL_GREETING_WARNING]
+
+
+def test_only_the_first_greeting_line_is_checked():
+    email, warnings = _check_email("Dear Hiring Manager,\nHi Bob,\n\nI am applying.")
+    assert email["body"].startswith("Dear Hiring Manager,\nHi Bob,") and warnings == []
+
+
+def test_a_greeting_after_the_first_few_lines_is_left_alone():
+    body = "Line one.\nLine two.\nLine three.\nDear John Brown,"
+    assert _check_email(body) == ({"subject": GOOD_SUBJECT, "body": body}, [])
+
+
+@pytest.mark.parametrize("placeholder", [
+    "[Your Name]", "[Company]", "<Name>", "{name}", "{{company}}", "[Hiring Manager's Name]",
+    "[City, Country]",
+])
+def test_email_placeholders_are_warned_and_kept(placeholder):
+    email, warnings = _check_email(f"Dear Hiring Manager,\n\nI am applying.\n\n{placeholder}")
+    assert email["body"].endswith(placeholder)  # kept: the user must fill it in
+    assert warnings == ["The email still has placeholder text that you must replace before "
+                        f"sending: {placeholder}."]
+
+
+def test_email_placeholders_in_the_subject_are_listed_once():
+    _, warnings = _check_email("Dear Hiring Manager,\n\n[Your Name] - [Your Name]\n{company}",
+                               subject="Application for [Job Title]")
+    assert warnings == ["The email still has placeholder text that you must replace before "
+                        "sending: [Job Title], [Your Name], {company}."]
+
+
+def test_a_placeholder_greeting_becomes_hiring_manager():
+    email, warnings = _check_email("Dear [Name],\n\nI am applying.")
+    assert email["body"] == "Dear Hiring Manager,\n\nI am applying."
+    assert warnings == [tailor_validator.EMAIL_GREETING_WARNING]
+
+
+@pytest.mark.parametrize("text", [
+    "Jane Doe <jane.doe@example.com>", "GitHub: <github.com/janedoe>",
+    "GitHub: <https://github.com/janedoe>", "[GitHub](https://github.com/janedoe)",
+    "I use Node.js/React and ASP.NET/Core.",
+], ids=["address", "bare-link", "full-link", "markdown-link", "tech-names"])
+def test_addresses_links_and_tech_names_are_not_placeholders_or_unknown_links(text):
+    assert _check_email(f"Dear Hiring Manager,\n\n{text}")[1] == []
+
+
+@pytest.mark.parametrize("link", [
+    "github.com/janedoe", "https://github.com/janedoe/", "http://www.github.com/janedoe",
+    "Visit https://github.com/janedoe.", "(https://github.com/janedoe)",
+], ids=["bare", "https-slash", "www", "sentence-end", "in-brackets"])
+def test_links_from_the_resume_are_fine(link):
+    assert _check_email(f"Dear Hiring Manager,\n\nCode: {link}")[1] == []
+
+
+def test_links_from_the_job_post_are_fine():
+    job = JOB_TEXT + "Apply at https://globex.example/careers/backend\n"
+    _, warnings = _check_email("Dear Hiring Manager,\n\nI saw www.globex.example/careers/backend.",
+                               job_text=job)
+    assert warnings == []
+
+
+@pytest.mark.parametrize("link", [
+    "https://janedoe.dev/work", "www.janedoe.dev", "linkedin.com/in/janedoe",
+    "github.com/jane",  # shorter than the real github.com/janedoe
+], ids=["https", "www", "bare", "prefix-of-a-real-link"])
+def test_links_that_are_not_in_the_resume_or_job_post_are_warned(link):
+    email, warnings = _check_email(f"Dear Hiring Manager,\n\nPortfolio: {link}")
+    assert link in email["body"]  # kept: the user decides
+    assert warnings == ["The email has a link that is not in your resume or the job post "
+                        f"({link}). Please check it."]
+
+
+def test_numbers_inside_an_unknown_link_are_reported_once_as_a_link():
+    _, warnings = _check_email("Dear Hiring Manager,\n\nSee https://janedoe.dev/2024/77")
+    assert warnings == ["The email has a link that is not in your resume or the job post "
+                        "(https://janedoe.dev/2024/77). Please check it."]
+
+
+def test_a_very_long_unknown_link_is_shortened_in_the_warning():
+    link = "https://janedoe.dev/" + "a" * 300
+    _, [warning] = _check_email(f"Dear Hiring Manager,\n\n{link}")
+    shown = warning.split("(", 1)[1].split(")", 1)[0]
+    assert shown.endswith("…") and len(shown) == 80 and link not in warning
+
+
+@pytest.mark.parametrize("phone", [
+    "555.123.4567", "+1.555.123.4567", "(555) 123 4567", "555 123 4567", "+1-555-123-4567",
+    "+15551234567", "1 (555) 123-4567",
+])
+def test_phone_numbers_match_the_resume_whatever_the_separators(phone):
+    # SOURCE_TEXT has "+1 (555) 123-4567"
+    _, warnings = _check_email(f"Dear Hiring Manager,\n\nThanks.\n\nJane Doe\n{phone}")
+    assert warnings == []
+
+
+def test_a_phone_number_from_the_job_post_is_fine():
+    _, warnings = _check_email("Dear Hiring Manager,\n\nI will call 555.222.3333.",
+                               job_text=JOB_TEXT + "Questions? Call 555-222-3333.\n")
+    assert warnings == []
+
+
+def test_an_unknown_phone_number_is_still_warned():
+    _, warnings = _check_email("Dear Hiring Manager,\n\nJane Doe\n555.987.6543")
+    assert warnings == ["The email has a number that is not in your resume or the job post "
+                        "(555.987.6543). Please check it."]
+
+
+# ---- application email: pathological input stays fast ---------------------------
+
+_SLOW_BEFORE = {  # each took seconds (quadratic regexes) before the bounds were added
+    "md-link": "[a](", "brackets": "[", "newlines": "\n", "bold": "**a ", "underscores": "__a ",
+    "fence": " \n", "star": "*a ", "code": "`a", "no-at": "a", "phone": "1 ", "domain": "a.com/",
+    "placeholder": "{a", "greeting": "Dear  ",
+}
+
+
+@pytest.mark.parametrize("name", sorted(_SLOW_BEFORE))
+def test_email_validation_of_100k_characters_is_fast(name):
+    unit = _SLOW_BEFORE[name]
+    text = unit * (100_000 // len(unit))  # built here: no big values in test ids
+    started = time.perf_counter()
+    email, warnings = tailor_validator.validate_email_draft(
+        {"subject": text, "body": text}, source_text=SOURCE_TEXT, job_text=JOB_TEXT,
+        gaps=["Kubernetes"])
+    elapsed = time.perf_counter() - started
+    assert elapsed < 1.5, f"{name}: {elapsed:.2f}s"  # ~0.02 s today; seconds before the fix
+    if email is not None:
+        assert len(email["subject"]) <= tailor_validator.SUBJECT_MAX
+        assert len(email["body"]) <= tailor_validator.EMAIL_BODY_MAX
+    assert all(w.startswith(tailor_validator.EMAIL_WARNING_PREFIX) for w in warnings)
+
+
+def test_strip_markdown_alone_is_linear_even_without_the_cap():
+    started = time.perf_counter()
+    for unit in ("[a](", "[", "**a ", "__a ", "\n", " \n"):
+        tailor_validator.strip_markdown(unit * (200_000 // len(unit)))
+    assert time.perf_counter() - started < 1.5
+
+
+def test_only_the_first_20k_raw_characters_reach_the_markdown_stripper(monkeypatch):
+    seen: list[int] = []
+    real = tailor_validator.strip_markdown
+    monkeypatch.setattr(tailor_validator, "strip_markdown",
+                        lambda text: seen.append(len(text)) or real(text))
+    email, _ = tailor_validator.validate_email_draft(
+        {"subject": "s" * 50_000, "body": ["Dear Hiring Manager,", "b " * 50_000]},
+        source_text=SOURCE_TEXT, job_text=JOB_TEXT, gaps=[])
+    assert seen == [tailor_validator.EMAIL_RAW_MAX] * 2  # body, then subject
+    assert email["body"].startswith("Dear Hiring Manager,")

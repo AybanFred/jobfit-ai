@@ -370,6 +370,20 @@ def test_export_rejects_the_application_email(db):
     assert db.storage.files == {} and db.storage.signed == [] and db.logged == []
 
 
+def test_export_of_another_users_email_is_404_not_422(db):
+    # The type check must come AFTER the owner check, so the answer never reveals
+    # that someone else's id exists (or what type it is).
+    theirs = add_app(db, 1, user=OTHER)
+    email_id = str(uuid.uuid4())
+    db.tables["generated_docs"].append({
+        "id": email_id, "user_id": OTHER, "job_post_id": theirs.job_id, "type": "email",
+        "content": {"subject": "Private", "body": "Not yours"},
+        "created_at": "2026-03-01T00:00:00+00:00"})
+    r = _export(email_id)
+    assert r.status_code == 404 and r.json() == {"detail": "Document not found"}
+    assert "Private" not in r.text and db.storage.files == {} and db.logged == []
+
+
 @pytest.mark.parametrize("failure", ["fail_upload", "fail_sign"])
 def test_export_storage_failure_is_clean_500(db, failure):
     ids = add_app(db)

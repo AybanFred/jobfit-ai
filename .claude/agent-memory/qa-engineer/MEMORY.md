@@ -1,0 +1,2 @@
+- [Email feature QA findings](project_email_feature_qa.md) — open bugs, fragile spots, unverifiable items for recruiter email + AI email
+- [Test setup tips](reference_test_setup_tips.md) — fixtures, xfail/it.fails convention, Windows probing gotchas

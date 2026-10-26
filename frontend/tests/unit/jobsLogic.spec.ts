@@ -11,7 +11,7 @@ import {
   isTemplateId, jobCompany, jobFacts, jobTitle, letterIsEmpty, matchSentence, normalizeCoverLetter, normalizeEmailDraft,
   normalizeJob, normalizeJobList, normalizeParsedJob, normalizeResume, normalizeResumeList, normalizeScore,
   normalizeTailorOut, normalizeTailoredResume, pickResumeId, readApiError, resumeIsEmpty, resumeLabel,
-  savedToTrackerMessage, scoreLabel, statusLineAt, statusLines, templateHint, validateJobText, validateJobUrl,
+  savedToTrackerDuration, savedToTrackerMessage, scoreLabel, statusLineAt, statusLines, templateHint, validateJobText, validateJobUrl,
   validateOptionalEmail, validateTailorForm, type TailorForm,
 } from '@/services/jobsLogic';
 
@@ -398,10 +398,15 @@ describe('application email from POST /tailor', () => {
     expect(normalizeTailorOut({})!.email).toBeNull();
   });
 
-  it('says where to find the email when it was asked for but did not come back', () => {
-    expect(savedToTrackerMessage(true, { email: { subject: 'S', body: 'B' } })).toBe('Saved to your Tracker');
+  it('says where to find the email: written, or asked for but not written', () => {
+    expect(savedToTrackerMessage(true, { email: { subject: 'S', body: 'B' } })).toBe('Saved to your Tracker. Your email is in the Email tab.');
     expect(savedToTrackerMessage(false, { email: null })).toBe('Saved to your Tracker');
     expect(savedToTrackerMessage(true, { email: null })).toBe('Saved to your Tracker. Open the Email tab to write the email.');
+  });
+
+  it('keeps the longer toasts about the Email tab on screen for 4 seconds', () => {
+    expect(savedToTrackerDuration(true)).toBe(4000);
+    expect(savedToTrackerDuration(false)).toBeUndefined(); // the normal toast time
   });
 });
 

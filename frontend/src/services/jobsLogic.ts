@@ -534,12 +534,16 @@ export function statusLineAt(elapsedMs: number, withEmail = false): string {
   return lines[Math.floor(Math.max(0, elapsedMs) / STATUS_LINE_MS) % lines.length];
 }
 
-/** The toast after a successful Go. Points to the Email tab when an email was asked for but none came back. */
+/** The toast after a successful Go. When an email was asked for, it points to the Email tab (written or not). */
 export function savedToTrackerMessage(askedForEmail: boolean, result: Pick<TailorResult, 'email'>): string {
-  return askedForEmail && !result.email
-    ? 'Saved to your Tracker. Open the Email tab to write the email.'
-    : 'Saved to your Tracker';
+  if (!askedForEmail) return 'Saved to your Tracker';
+  return result.email
+    ? 'Saved to your Tracker. Your email is in the Email tab.'
+    : 'Saved to your Tracker. Open the Email tab to write the email.';
 }
+
+/** How long that toast stays: the longer messages (about the Email tab) stay 4 seconds; undefined = the normal time. */
+export const savedToTrackerDuration = (askedForEmail: boolean): number | undefined => (askedForEmail ? 4000 : undefined);
 
 // ---------- Showing saved items ----------
 

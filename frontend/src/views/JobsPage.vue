@@ -17,7 +17,7 @@
             <IconChip :icon="sparklesOutline" tone="primary" size="lg" />
             <div>
               <h1 id="tailor-title" class="ui-h1 small">Tailor your resume</h1>
-              <p class="lead">Paste a job post. We write a resume, a cover letter and a short email for it using only your real experience.</p>
+              <p class="lead">Paste a job post. We write a resume and a cover letter for it, using only your real experience.</p>
             </div>
           </div>
 
@@ -296,7 +296,7 @@ import ImportModelPicker from '@/components/ImportModelPicker.vue';
 import { useJobsStore } from '@/stores/jobs';
 import {
   MAX_EMAIL_CHARS, MAX_JOB_CHARS, MAX_SHORT_CHARS, MAX_URL_CHARS, MIN_JOB_CHARS, TEMPLATES, charCountLabel, firstFormProblem,
-  formatFileSize, resumeLabel, savedToTrackerMessage, statusLineAt, templateHint, type ResumeTab,
+  formatFileSize, resumeLabel, savedToTrackerDuration, savedToTrackerMessage, statusLineAt, templateHint, type ResumeTab,
 } from '@/services/jobsLogic';
 import { showToast } from '@/services/feedback';
 import { tapHaptic } from '@/services/haptics';
@@ -386,9 +386,8 @@ async function onGo() {
   if (!result) return; // the error (if any) is shown above the button
   // The form is empty again for the next job.
   urlTouched.value = titleTouched.value = companyTouched.value = recruiterTouched.value = false;
-  // When the email is missing the toast is longer (it points to the Email tab), so it stays a bit longer.
-  const emailMissing = askedForEmail && !result.email;
-  void showToast(savedToTrackerMessage(askedForEmail, result), 'success', emailMissing ? 4000 : undefined);
+  // With an email the toast is longer (it points to the Email tab), so it stays a bit longer.
+  void showToast(savedToTrackerMessage(askedForEmail, result), 'success', savedToTrackerDuration(askedForEmail));
   // Open the new application, unless the user went to another screen while the AI was working.
   if (!router.currentRoute.value.path.startsWith('/tabs/jobs')) return;
   const id = result.application_id;
@@ -432,8 +431,9 @@ onIonViewWillEnter(() => {
 
 .group-title { margin: 0 0 8px 4px; font-size: 0.9rem; font-weight: 650; }
 .seg { min-height: 44px; --background: var(--ui-soft); border-radius: 14px; }
-.seg ion-segment-button { min-width: 0; --padding-start: 4px; --padding-end: 4px; }
-.seg ion-label { white-space: normal; line-height: 1.2; font-size: 0.85rem; }
+/* normal letter case, like the Tracker tabs (Material's uppercase wrapped "MASTER PROFILE") */
+.seg ion-segment-button { min-width: 0; --padding-start: 4px; --padding-end: 4px; text-transform: none; letter-spacing: 0; }
+.seg ion-label { white-space: normal; overflow-wrap: normal; word-break: normal; line-height: 1.2; font-size: 0.85rem; }
 .pane { margin-top: 12px; }
 .pane-state { text-align: center; }
 .small-btn { margin: 8px 0 0; min-height: 40px; --border-radius: 12px; }

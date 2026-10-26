@@ -4,7 +4,8 @@ import { describe, expect, it, vi } from 'vitest';
 vi.mock('@/services/supabase', () => ({ supabase: { auth: { getSession: async () => ({ data: { session: null } }) } } }));
 
 import {
-  EMAIL_WARNING_PREFIX, OPEN_EMAIL_HINTS, buildMailtoUrl, emailSendState, emailWarningsOf, friendlyEmailError,
+  CANNOT_OPEN_EMAIL_HINT, CHOOSE_OTHER_MODEL, EMAIL_WARNING_PREFIX, OPEN_EMAIL_HINTS, buildMailtoUrl, emailSendState,
+  emailWarningsOf, friendlyEmailError,
   isEmailWarning, matchWarningsOf, newestEmail, normalizeApplicationDetail, normalizeApplicationSummary,
   normalizeStoredEmail, normalizeWrittenEmail, summaryOf, validateRecruiterEmail,
 } from '@/services/trackerLogic';
@@ -148,6 +149,12 @@ describe('buildMailtoUrl', () => {
     expect(buildMailtoUrl('sam@globex.com', 'Hello', '')).toBe('mailto:sam@globex.com?subject=Hello');
     expect(buildMailtoUrl('', '', '')).toBe('mailto:');
   });
+
+  it('returns null (cannot build) for text with a broken character instead of throwing', () => {
+    expect(buildMailtoUrl('sam@globex.com', 'S', 'broken \uD83D end')).toBeNull(); // half of an emoji
+    expect(buildMailtoUrl('sam@globex.com', 'Hi \uDE00', 'Body')).toBeNull();
+    expect(buildMailtoUrl('sam@globex.com', 'S', 'Whole emoji 😀 is fine')).toMatch(/%F0%9F%98%80/);
+  });
 });
 
 describe('emailSendState', () => {
@@ -166,6 +173,11 @@ describe('emailSendState', () => {
     expect(emailSendState('sam@globex', 'Hello', 'Hi')).toEqual({
       href: null, hints: ['Please fix the email address above first.'],
     });
+  });
+
+  it('is disabled with a "copy the text" hint when the link cannot be built', () => {
+    expect(emailSendState('sam@globex.com', 'Hello', 'broken \uD83D end')).toEqual({ href: null, hints: [CANNOT_OPEN_EMAIL_HINT] });
+    expect(CANNOT_OPEN_EMAIL_HINT).toBe('This email cannot be opened in your email app. Copy the text above and paste it there.');
   });
 });
 
@@ -189,7 +201,15 @@ describe('friendlyEmailError', () => {
 
   it('shows a short plain backend sentence for "not set up" and "unknown model"', () => {
     expect(friendlyEmailError(new Error('API 503: {"detail":"Groq is not set up on the server."}'), 'first')).toBe('Groq is not set up on the server.');
-    expect(friendlyEmailError(new Error('API 400: {"detail":"Unknown AI model."}'), 'regenerate')).toBe('Unknown AI model.');
+    // "unknown model" also says where to choose another one (the Email tab uses the Jobs tab model)
+    expect(friendlyEmailError(new Error('API 400: {"detail":"Unknown AI model."}'), 'regenerate'))
+      .toBe('Unknown AI model. Please choose another AI model on the Jobs tab.');
+    expect(friendlyEmailError(new Error('API 400: {"detail":"Unknown AI model"}'), 'first')) // the backend's exact text
+      .toBe(`Unknown AI model. ${CHOOSE_OTHER_MODEL}`);
+    expect(CHOOSE_OTHER_MODEL).toBe('Please choose another AI model on the Jobs tab.');
+    // other 400s keep their own sentence, without the hint
+    expect(friendlyEmailError(new Error('API 400: {"detail":"The uploaded file is empty"}'), 'first')).toBe('The uploaded file is empty');
+    expect(friendlyEmailError(new Error('API 400: x'), 'first')).toBe('We could not write the email. Please try again.');
     // FastAPI validation errors are lists, not sentences
     expect(friendlyEmailError(new Error('API 422: {"detail":[{"loc":["body","model_id"]}]}'), 'first'))
       .toBe('We could not write the email. Please try again.');

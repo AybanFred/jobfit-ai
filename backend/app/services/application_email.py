@@ -8,10 +8,18 @@ POST /applications/{id}/email makes ONE AI call:
      from (user_resumes.text_content), else the Master Profile text.
   3. Ask the model for {"email": {subject, body}} with the same rules as tailoring.
   4. Check it with tailor_validator.validate_email_draft and save a NEW
-     generated_docs row of type "email". Older versions are kept; the detail
-     screen shows the latest one.
+     generated_docs row of type "email". Older versions are kept, but only the
+     newest EMAIL_VERSIONS_KEPT per job (best effort); the detail screen shows the
+     latest one.
   5. Best effort: replace the old email warnings ("The email ...") saved with the
      match by the new ones, so the detail screen does not show stale warnings.
+
+Deleted source resume: deleting an uploaded resume sets source_resume_id to null on
+the documents, which looks the same as "made from the Master Profile". The
+"job.tailored" activity log of the application tells them apart (its metadata has
+"source": "resume" | "profile"). When the resume was deleted, the email is written
+from the Master Profile with a warning saying so; when the log is missing, nothing
+is claimed.
 
 Privacy: the recruiter email address is never even loaded here, so it cannot
 reach the AI. Resume text, job text and model output are never logged.
@@ -25,11 +33,21 @@ from app.db.supabase_client import get_admin_client
 from app.services import tailor, tailor_validator
 from app.services.ai_providers import complete_json
 from app.services.applications import (
-    DOC_TYPES, EMAIL_DOC_TYPE, MAX_DOCS_PER_JOB, _not_found, _one, _rows, _str_list,
+    _IN_BATCH, DOC_TYPES, EMAIL_DOC_TYPE, MAX_DOCS_PER_JOB, _not_found, _one, _rows,
+    _str_list,
 )
 
+EMAIL_VERSIONS_KEPT = 10  # per job; older email versions are removed after a new one
+_PRUNE_SCAN = 1000
 _SHORT_MAX = 200
 _AI_FAILED = "The AI service could not write the email. Please try again."
+RESUME_DELETED_WARNING = ("The email uses your Master Profile because the original resume "
+                          "is no longer saved.")
+_RESUME_DELETED_EMPTY_PROFILE = (
+    "The resume this application was made from has been deleted, and your Master Profile "
+    "is empty. Add your experience, education or skills to your Master Profile first, "
+    "or tailor this job again from another resume."
+)
 
 
 def _ai_failed(exc: Exception) -> HTTPException:
@@ -90,6 +108,49 @@ def _candidate_name(resume_doc: dict) -> str | None:
     return _short(header.get("name")) if isinstance(header, dict) else None
 
 
+def _resume_was_deleted(db, user_id: str, application_id: str) -> bool:
+    """True when the application was tailored from an uploaded resume (per its
+    "job.tailored" activity log) that is gone now. Only called when the documents have
+    no source_resume_id. Best effort: a missing log or a failed query means False."""
+    try:
+        log = _one(db.table("activity_logs").select("metadata")
+                   .eq("user_id", user_id).eq("action", "job.tailored")
+                   .eq("entity_id", application_id).order("created_at", desc=True))
+    except Exception as exc:  # noqa: BLE001
+        print(f"[email] could not read the tailoring log: {type(exc).__name__}")
+        return False
+    meta = (log or {}).get("metadata")
+    return isinstance(meta, dict) and meta.get("source") == "resume"
+
+
+def _load_source_text(user_id: str, source_id, resume_deleted: bool) -> str:
+    try:
+        return tailor.load_source_text(  # 404 / 422 / 500
+            user_id, "resume" if source_id else "profile", str(source_id) if source_id else None)
+    except HTTPException as exc:
+        if resume_deleted and exc.status_code == 422:  # the Master Profile is empty
+            raise HTTPException(422, _RESUME_DELETED_EMPTY_PROFILE) from exc
+        raise
+
+
+def _prune_old_emails(db, user_id: str, job_id: str, new_id: str) -> None:
+    """Keep the newest EMAIL_VERSIONS_KEPT email rows of this job (the new one always
+    stays). Best effort, never raises; never touches resume / cover letter rows."""
+    try:
+        rows = _rows(db.table("generated_docs").select("id, created_at")
+                     .eq("job_post_id", job_id).eq("user_id", user_id)
+                     .eq("type", EMAIL_DOC_TYPE).order("created_at", desc=True)
+                     .limit(_PRUNE_SCAN).execute())
+        others = [str(r["id"]) for r in rows if r.get("id") and str(r["id"]) != new_id]
+        old = others[EMAIL_VERSIONS_KEPT - 1:]
+        for start in range(0, len(old), _IN_BATCH):
+            (db.table("generated_docs").delete()
+             .eq("user_id", user_id).eq("job_post_id", job_id).eq("type", EMAIL_DOC_TYPE)
+             .in_("id", old[start:start + _IN_BATCH]).execute())
+    except Exception as exc:  # noqa: BLE001
+        print(f"[email] could not remove old email versions: {type(exc).__name__}")
+
+
 def _replace_email_warnings(db, user_id: str, match: dict | None, warnings: list[str]) -> None:
     """Best effort, never raises: the new email is already saved."""
     if not match or not match.get("id"):
@@ -120,8 +181,8 @@ def write_email(user_id: str, application_id: str, *, settings: Settings,
 
     job, resume_doc, letter_doc = loaded["job"], loaded["resume"], loaded["letter"]
     source_id = resume_doc.get("source_resume_id") or letter_doc.get("source_resume_id")
-    source_text = tailor.load_source_text(  # 404 / 422 / 500
-        user_id, "resume" if source_id else "profile", str(source_id) if source_id else None)
+    resume_deleted = not source_id and _resume_was_deleted(db, user_id, application_id)
+    source_text = _load_source_text(user_id, source_id, resume_deleted)  # 404 / 422 / 500
 
     parsed = job.get("parsed") if isinstance(job.get("parsed"), dict) else {}
     job_text = job.get("raw_text") if isinstance(job.get("raw_text"), str) else ""
@@ -149,6 +210,8 @@ def write_email(user_id: str, application_id: str, *, settings: Settings,
         raise _ai_failed(exc) from exc
     if email is None:  # this call exists only to write the email
         raise _ai_failed(ValueError("empty email"))
+    if resume_deleted:
+        warnings = [RESUME_DELETED_WARNING] + warnings
 
     try:
         result = db.table("generated_docs").insert({
@@ -165,6 +228,7 @@ def write_email(user_id: str, application_id: str, *, settings: Settings,
     except Exception as exc:  # noqa: BLE001
         raise _db_failed("save the email", exc) from exc
 
+    _prune_old_emails(db, user_id, loaded["job_id"], str(row["id"]))
     _replace_email_warnings(db, user_id, loaded["match"], warnings)
     return {"id": row["id"], "created_at": row.get("created_at"), **email,
             "warnings": warnings, "duration_ms": duration_ms}

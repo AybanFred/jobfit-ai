@@ -11,7 +11,7 @@
     >
       <div class="warn-head">
         <ion-icon :icon="alertCircleOutline" class="warn-icon" aria-hidden="true" />
-        <h3 :id="`${uid}-warn`" class="ui-h3">Please check these lines</h3>
+        <h2 :id="`${uid}-warn`" ref="warnRef" class="ui-h3 focus-target" tabindex="-1">Please check these lines</h2>
       </div>
       <p class="warn-intro">Check these before you send. You can change the text in your email app.</p>
       <ul class="warn-list">
@@ -21,14 +21,14 @@
 
     <!-- 2. The email -->
     <section class="ui-surface ui-card" :aria-labelledby="`${uid}-title`">
-      <h2 :id="`${uid}-title`" ref="titleRef" class="ui-h2 email-title" tabindex="-1">Application email</h2>
+      <h2 :id="`${uid}-title`" ref="titleRef" class="ui-h2 email-title focus-target" tabindex="-1">Application email</h2>
 
       <!-- To: saved when the user leaves the field -->
       <div>
         <ion-input
           class="field"
           :class="invalid(!!toError)"
-          label="To"
+          label="To (recruiter email)"
           label-placement="stacked"
           fill="outline"
           type="email"
@@ -38,7 +38,7 @@
           :spellcheck="false"
           placeholder="recruiter@company.com"
           :maxlength="MAX_EMAIL_CHARS"
-          helper-text="The recruiter's email. Optional. You can also choose it in your email app."
+          helper-text="Optional. If empty, you choose the recipient in your email app."
           :error-text="toError"
           :value="toDraft"
           @ionInput="toDraft = String($event.detail.value ?? '')"
@@ -123,7 +123,7 @@
     <template v-if="email && !writing">
       <!-- 3. Attach the documents (the email app cannot attach them for the user) -->
       <section v-if="resumeDocId || letterDocId" class="ui-surface ui-card" :aria-labelledby="`${uid}-attach`">
-        <h3 :id="`${uid}-attach`" class="ui-h3">Attach your resume and cover letter</h3>
+        <h2 :id="`${uid}-attach`" class="ui-h3">Attach your resume and cover letter</h2>
         <p class="muted attach-help">Your email app cannot attach files for you. Download them first, then attach them when the email opens.</p>
         <div class="attach-groups">
           <div v-for="g in attachGroups" :key="g.type" class="attach-group">
@@ -155,13 +155,13 @@
           class="pressable ui-btn ui-btn-gradient open-btn"
           :href="send.href ?? undefined"
           :disabled="!send.href"
-          :aria-describedby="`${uid}-hint`"
           @click="onOpen"
         >
           <ion-icon slot="start" :icon="mailOutline" aria-hidden="true" />
           Open in email app
         </ion-button>
-        <div :id="`${uid}-hint`" class="open-hint">
+        <!-- Read right after the button (aria-describedby would not reach into ion-button's shadow DOM). -->
+        <div class="open-hint">
           <p v-for="h in send.hints" :key="h">{{ h }}</p>
         </div>
 
@@ -283,16 +283,18 @@ async function saveTo(value: string | null) {
 
 // ----- Writing the email -----
 const titleRef = ref<HTMLElement | null>(null);
+const warnRef = ref<HTMLElement | null>(null);
 
-async function focusTitle() {
+/** After a new email: focus the "Please check these lines" heading when it has warnings, else the title. */
+async function focusNewEmail() {
   if (!alive || !props.active) return;
   await nextTick();
-  titleRef.value?.focus();
+  (warnings.value.length && warnRef.value ? warnRef.value : titleRef.value)?.focus();
 }
 
 async function write() {
   banner.hide();
-  if (await store.writeEmail(id.value, props.modelId)) void focusTitle();
+  if (await store.writeEmail(id.value, props.modelId)) void focusNewEmail();
 }
 
 function onWrite() {
@@ -379,8 +381,8 @@ watch(id, () => {
 <style scoped>
 .email-panel { display: flex; flex-direction: column; gap: 12px; }
 .email-title { margin-bottom: 14px; }
-.email-title:focus { outline: none; }
-.email-title:focus-visible { outline: 2px solid var(--color-primary); outline-offset: 4px; border-radius: 4px; }
+/* Headings focused by the app after a new email (tabindex -1): no ring, they are not buttons. */
+.focus-target:focus, .focus-target:focus-visible { outline: none; }
 .field { --border-radius: 12px; }
 .muted { margin: 6px 0 0; font-size: 0.9rem; line-height: 1.45; color: var(--ui-text-soft); }
 .fine { margin: 10px 0 0; font-size: 0.8rem; line-height: 1.4; color: var(--ui-text-soft); }

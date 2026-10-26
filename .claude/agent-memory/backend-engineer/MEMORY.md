@@ -1,2 +1,2 @@
-- [Backend conventions and pitfalls](backend_conventions.md) — test settings, AI mocking, tailoring guard, fake_supabase, tracker/export, email docs + recruiter address
+- [Backend conventions and pitfalls](backend_conventions.md) — test settings, AI mocking, tailoring guard, fake_supabase, email docs, fullmatch + ReDoS rules, deleted-resume detection
 - [Migrations and Storage conventions](project_migrations_storage.md) — numbering (0001-0005), enum-in-transaction pitfall, private buckets, export paths, migrate-before-deploy
