@@ -6,6 +6,8 @@ import { isFriendlyDetail } from './resumeImport';
 export const MIN_JOB_CHARS = 50;
 export const MAX_JOB_CHARS = 15000;
 export const MAX_URL_CHARS = 500;
+/** Job title and company (same limit as the backend). */
+export const MAX_SHORT_CHARS = 200;
 /** The screen gives up waiting after 3 minutes (the AI usually needs 30 to 120 seconds). */
 export const TAILOR_TIMEOUT_MS = 180_000;
 
@@ -99,9 +101,19 @@ export function validateJobUrl(url: string): string {
   return '';
 }
 
+/** Job title and company are required: they name the entry in the Tracker and the cover letter. */
+export function validateShortField(value: string, label: string): string {
+  const v = value.trim();
+  if (!v) return `Please enter the ${label}.`;
+  if (v.length > MAX_SHORT_CHARS) return `That is too long. The limit is ${MAX_SHORT_CHARS} characters.`;
+  return '';
+}
+
 /** Everything the form needs to send POST /tailor. `resumeId` is the resume of the chosen tab (null for profile). */
 export interface TailorForm {
   jobUrl: string;
+  jobTitle: string;
+  company: string;
   text: string;
   tab: ResumeTab;
   resumeId: string | null;
@@ -112,6 +124,8 @@ export interface TailorForm {
 export interface TailorFormErrors {
   text: string;
   url: string;
+  title: string;
+  company: string;
   resume: string;
   template: string;
   model: string;
@@ -125,6 +139,8 @@ export function validateTailorForm(f: TailorForm): TailorFormErrors {
   return {
     text: validateJobText(f.text),
     url: validateJobUrl(f.jobUrl),
+    title: validateShortField(f.jobTitle, 'job title'),
+    company: validateShortField(f.company, 'company'),
     resume,
     template: isTemplateId(f.template) ? '' : 'Please choose a template.',
     model: f.modelId ? '' : 'Please choose an AI model.',
@@ -132,15 +148,17 @@ export function validateTailorForm(f: TailorForm): TailorFormErrors {
 }
 
 export const hasFormErrors = (e: TailorFormErrors): boolean =>
-  !!(e.text || e.url || e.resume || e.template || e.model);
+  !!(e.text || e.url || e.title || e.company || e.resume || e.template || e.model);
 
 /** The first thing to fix, in the order of the form (shown under the disabled Go button). */
 export const firstFormProblem = (e: TailorFormErrors): string =>
-  e.text || e.url || e.resume || e.template || e.model;
+  e.url || e.title || e.company || e.text || e.resume || e.template || e.model;
 
 export interface TailorRequest {
   job_text: string;
   source_url: string | null;
+  job_title: string;
+  company: string;
   source: 'resume' | 'profile';
   resume_id: string | null;
   template: TemplateId;
@@ -153,6 +171,8 @@ export function buildTailorRequest(f: TailorForm): TailorRequest {
   return {
     job_text: f.text.trim(),
     source_url: cleanJobUrl(f.jobUrl),
+    job_title: f.jobTitle.trim(),
+    company: f.company.trim(),
     source: fromProfile ? 'profile' : 'resume',
     resume_id: fromProfile ? null : f.resumeId,
     template: isTemplateId(f.template) ? f.template : DEFAULT_TEMPLATE,

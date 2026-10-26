@@ -4,7 +4,7 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, status
 from pydantic import BaseModel, Field, StringConstraints, field_validator, model_validator
 
-from app.api.jobs import JOB_TEXT_MAX, JOB_TEXT_MIN, JobOut
+from app.api.jobs import JOB_TEXT_MAX, JOB_TEXT_MIN, JobOut, Short
 from app.api.jobs import _to_out as job_to_out
 from app.core.auth import CurrentUser, get_current_user
 from app.core.config import Settings, get_settings
@@ -22,14 +22,16 @@ class TailorIn(BaseModel):
                                                min_length=JOB_TEXT_MIN, max_length=JOB_TEXT_MAX)]
     source_url: Annotated[str, StringConstraints(strip_whitespace=True, max_length=500,
                                                  pattern=r"^https?://\S+$")] | None = None
+    job_title: Short | None = None  # typed by the user; wins over the AI-detected title
+    company: Short | None = None    # typed by the user; wins over the AI-detected company
     source: Literal["resume", "profile"]
     resume_id: UUID | None = None  # required when source = "resume"
     template: Literal["harvard"] = "harvard"
     model_id: str | None = Field(default=None, max_length=100)  # from GET /ai/models
 
-    @field_validator("source_url", mode="before")
+    @field_validator("source_url", "job_title", "company", mode="before")
     @classmethod
-    def _blank_url_is_none(cls, value):
+    def _blank_is_none(cls, value):
         return None if isinstance(value, str) and not value.strip() else value
 
     @model_validator(mode="after")
@@ -133,6 +135,7 @@ def tailor(
         user.id, job_text=body.job_text, source_url=body.source_url, source=body.source,
         resume_id=str(body.resume_id) if body.resume_id else None, template=body.template,
         settings=settings, model_id=f"{provider}:{model}",
+        job_title=body.job_title, company=body.company,
     )  # 404 / 422 / 429 / 500 / 502
 
     resume, match = result["resume"], result["match"]

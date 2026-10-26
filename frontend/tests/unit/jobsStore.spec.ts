@@ -41,11 +41,13 @@ function hangUntilAbort<T>() {
   });
 }
 
-/** A store with a complete form: text, a saved resume chosen, and a model. */
+/** A store with a complete form: title, company, text, a saved resume chosen, and a model. */
 async function readyStore() {
   resumes.listResumes.mockResolvedValue([resume('r1')]);
   const s = useJobsStore();
   await s.loadResumes();
+  s.setJobTitle('Backend Engineer');
+  s.setCompany('Globex Inc');
   s.setText(TEXT);
   s.setModel('groq:x');
   return s;
@@ -202,6 +204,8 @@ describe('jobs store: form', () => {
     resumes.listResumes.mockResolvedValue([]);
     const s = useJobsStore();
     await s.loadResumes();
+    s.setJobTitle('Backend Engineer');
+    s.setCompany('Globex Inc');
     s.setText(TEXT);
     s.setModel('groq:x');
     expect(s.canGo).toBe(false); // Upload tab, nothing uploaded
@@ -236,6 +240,8 @@ describe('jobs store: Go', () => {
     expect(tailor.tailorJob).toHaveBeenCalledWith({
       job_text: TEXT,
       source_url: 'https://jobs.example.com/1',
+      job_title: 'Backend Engineer',
+      company: 'Globex Inc',
       source: 'resume',
       resume_id: 'r1',
       template: 'harvard',
@@ -245,6 +251,8 @@ describe('jobs store: Go', () => {
     expect(s.phase).toBe('form');
     expect(s.text).toBe('');
     expect(s.jobUrl).toBe('');
+    expect(s.jobTitle).toBe('');
+    expect(s.company).toBe('');
     expect(s.tailorError).toBeNull();
     expect(s.resumeTab).toBe('saved');
     expect(s.resumeId).toBe('r1');

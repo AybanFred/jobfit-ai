@@ -84,7 +84,8 @@ describe('templates', () => {
 
 describe('tailor form', () => {
   const ok: TailorForm = {
-    jobUrl: '', text: TEXT, tab: 'saved', resumeId: 'r1', template: 'harvard', modelId: 'groq:x',
+    jobUrl: '', jobTitle: 'Backend Engineer', company: 'Globex Inc',
+    text: TEXT, tab: 'saved', resumeId: 'r1', template: 'harvard', modelId: 'groq:x',
   };
 
   it('accepts a complete form', () => {
@@ -106,16 +107,30 @@ describe('tailor form', () => {
     expect(validateTailorForm({ ...ok, jobUrl: 'not a link' }).url).toMatch(/http/);
   });
 
+  it('needs a job title and a company of at most 200 characters', () => {
+    expect(validateTailorForm({ ...ok, jobTitle: '   ' }).title).toMatch(/job title/);
+    expect(validateTailorForm({ ...ok, company: '' }).company).toMatch(/company/);
+    expect(validateTailorForm({ ...ok, jobTitle: 'x'.repeat(201) }).title).toMatch(/too long/);
+    expect(validateTailorForm({ ...ok, company: 'x'.repeat(200) }).company).toBe('');
+    expect(hasFormErrors(validateTailorForm({ ...ok, company: '' }))).toBe(true);
+  });
+
   it('reports the first problem in the order of the form', () => {
-    const e = validateTailorForm({ ...ok, text: '', jobUrl: 'bad', modelId: null });
-    expect(firstFormProblem(e)).toMatch(/paste the job description/);
-    expect(firstFormProblem(validateTailorForm({ ...ok, jobUrl: 'bad', modelId: null }))).toMatch(/http/);
+    const e = validateTailorForm({ ...ok, text: '', jobUrl: 'bad', jobTitle: '', modelId: null });
+    expect(firstFormProblem(e)).toMatch(/http/);
+    expect(firstFormProblem(validateTailorForm({ ...ok, text: '', jobTitle: '', modelId: null }))).toMatch(/job title/);
+    expect(firstFormProblem(validateTailorForm({ ...ok, text: '', company: '' }))).toMatch(/company/);
+    expect(firstFormProblem(validateTailorForm({ ...ok, text: '', modelId: null }))).toMatch(/paste the job description/);
   });
 
   it('builds the request for a saved or uploaded resume', () => {
-    expect(buildTailorRequest({ ...ok, text: `  ${TEXT}  `, jobUrl: ' HTTPS://example.com/j ' })).toEqual({
+    expect(buildTailorRequest({
+      ...ok, text: `  ${TEXT}  `, jobUrl: ' HTTPS://example.com/j ', jobTitle: ' Backend Engineer ', company: ' Globex Inc ',
+    })).toEqual({
       job_text: TEXT,
       source_url: 'https://example.com/j',
+      job_title: 'Backend Engineer',
+      company: 'Globex Inc',
       source: 'resume',
       resume_id: 'r1',
       template: 'harvard',

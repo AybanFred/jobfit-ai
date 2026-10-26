@@ -38,6 +38,8 @@ export const useJobsStore = defineStore('jobs', {
   state: () => ({
     // --- form ---
     jobUrl: '',
+    jobTitle: '',
+    company: '',
     /** The pasted job description (kept when something fails, so nothing is lost). */
     text: '',
     resumeTab: 'saved' as ResumeTab,
@@ -78,6 +80,8 @@ export const useJobsStore = defineStore('jobs', {
     form(): TailorForm {
       return {
         jobUrl: this.jobUrl,
+        jobTitle: this.jobTitle,
+        company: this.company,
         text: this.text,
         tab: this.resumeTab,
         resumeId: this.effectiveResumeId,
@@ -97,6 +101,8 @@ export const useJobsStore = defineStore('jobs', {
   actions: {
     setText(value: string) { this.text = value; },
     setUrl(value: string) { this.jobUrl = value; },
+    setJobTitle(value: string) { this.jobTitle = value; },
+    setCompany(value: string) { this.company = value; },
     setModel(id: string | null) { this.modelId = id; },
     setResume(id: string | null) { this.resumeId = id; },
     setTemplate(id: unknown) { if (isTemplateId(id)) this.template = id; },
@@ -204,6 +210,8 @@ export const useJobsStore = defineStore('jobs', {
         const result = await tailorJob(request, controller.signal);
         if (myRun !== tailorRun) return null; // cancelled or replaced while waiting
         this.jobUrl = '';
+        this.jobTitle = '';
+        this.company = '';
         this.text = '';
         this.phase = 'form';
         void tapHaptic('medium');

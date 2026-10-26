@@ -43,6 +43,41 @@
               />
             </div>
 
+            <!-- Job title + company (required: they name the Tracker entry and the cover letter) -->
+            <div>
+              <ion-input
+                class="field"
+                :class="invalid(!!titleError)"
+                label="Job title"
+                label-placement="stacked"
+                fill="outline"
+                autocapitalize="words"
+                placeholder="e.g. Backend Engineer"
+                :maxlength="MAX_SHORT_CHARS"
+                :error-text="titleError"
+                :value="store.jobTitle"
+                @ionInput="store.setJobTitle(String($event.detail.value ?? ''))"
+                @ionBlur="titleTouched = true"
+              />
+            </div>
+            <div>
+              <ion-input
+                class="field"
+                :class="invalid(!!companyError)"
+                label="Company"
+                label-placement="stacked"
+                fill="outline"
+                autocapitalize="words"
+                autocomplete="organization"
+                placeholder="e.g. Globex Inc"
+                :maxlength="MAX_SHORT_CHARS"
+                :error-text="companyError"
+                :value="store.company"
+                @ionInput="store.setCompany(String($event.detail.value ?? ''))"
+                @ionBlur="companyTouched = true"
+              />
+            </div>
+
             <!-- Job description -->
             <div>
               <ion-textarea
@@ -225,7 +260,7 @@ import ImportDropZone from '@/components/ImportDropZone.vue';
 import ImportModelPicker from '@/components/ImportModelPicker.vue';
 import { useJobsStore } from '@/stores/jobs';
 import {
-  MAX_JOB_CHARS, MAX_URL_CHARS, MIN_JOB_CHARS, TEMPLATES, charCountLabel, firstFormProblem, formatFileSize,
+  MAX_JOB_CHARS, MAX_SHORT_CHARS, MAX_URL_CHARS, MIN_JOB_CHARS, TEMPLATES, charCountLabel, firstFormProblem, formatFileSize,
   resumeLabel, statusLineAt, templateHint, type ResumeTab,
 } from '@/services/jobsLogic';
 import { showToast } from '@/services/feedback';
@@ -242,11 +277,15 @@ const MODEL_NOTE = 'The job text and your resume details are sent to the provide
 const contentRef = ref<{ $el: HTMLIonContentElement } | null>(null);
 const errorRef = ref<HTMLElement | null>(null);
 const urlTouched = ref(false);
+const titleTouched = ref(false);
+const companyTouched = ref(false);
 
 const tooShort = computed(() => store.text.trim().length > 0 && store.text.trim().length < MIN_JOB_CHARS);
 const textHint = computed(() => (tooShort.value ? `Please paste at least ${MIN_JOB_CHARS} characters.` : ''));
 // The link error shows after the user leaves the field (or presses Go), not while typing.
 const urlError = computed(() => (urlTouched.value ? store.formErrors.url : ''));
+const titleError = computed(() => (titleTouched.value ? store.formErrors.title : ''));
+const companyError = computed(() => (companyTouched.value ? store.formErrors.company : ''));
 const goHint = computed(() =>
   (store.uploading ? 'Please wait until your resume has uploaded.' : firstFormProblem(store.formErrors)));
 const uploadedSize = computed(() => formatFileSize(store.uploaded?.size_bytes ?? 0));
@@ -298,10 +337,11 @@ function onChangeFile() {
 
 async function onGo() {
   tapHaptic();
-  urlTouched.value = true;
+  urlTouched.value = titleTouched.value = companyTouched.value = true;
   const result = await store.tailor();
   if (!result) return; // the error (if any) is shown above the button
-  urlTouched.value = false; // the form is empty again for the next job
+  // The form is empty again for the next job.
+  urlTouched.value = titleTouched.value = companyTouched.value = false;
   void showToast('Saved to your Tracker');
   // Open the new application, unless the user went to another screen while the AI was working.
   if (!router.currentRoute.value.path.startsWith('/tabs/jobs')) return;
