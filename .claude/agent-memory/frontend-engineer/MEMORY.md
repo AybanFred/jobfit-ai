@@ -4,3 +4,5 @@
 - [Jobs screen patterns](jobs-screen-patterns.md) — Jobs "Go" flow (form -> working -> opens Tracker detail), tailor/resumes services, Ionic pitfalls
 - [UI redesign and avatar](ui-redesign-and-avatar.md) — ui.css tokens, IconChip/UserAvatar/EmptyState, profile photo design, daisyUI class collisions
 - [Tracker screen patterns](tracker-screen-patterns.md) — list/table + detail, optimistic store with undo, downloads, datetime/ion-color/back pitfalls
+- [Application email patterns](application-email-patterns.md) — recruiter email, Email tab, mailto builder, "Sent it?" composable, email store state
+- [Shared worktree rules](feedback_shared_worktree.md) — never git stash (parallel agents); visual Vite needs own cacheDir/port; no taskkill
