@@ -1,0 +1,2 @@
+- [Commit conventions](commit-conventions.md) — scopes, trailer rule, and how to group backend/frontend/migration changes
+- [Security checks](security-checks.md) — pre-commit .env and key-scan steps, known false positives and warnings

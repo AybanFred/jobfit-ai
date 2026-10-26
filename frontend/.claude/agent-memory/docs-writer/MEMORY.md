@@ -1,0 +1,1 @@
+- [Client document set conventions](project_client-document-set.md) — layout, ID prefixes, status labels and update map for C:\Projects\jobfit-ai\document
