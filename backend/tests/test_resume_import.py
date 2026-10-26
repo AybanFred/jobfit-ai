@@ -522,7 +522,7 @@ def test_provider_5xx_is_502_without_body(http, logged, code):
     http.status = code
     r = _post(make_pdf(RESUME_LINES))
     assert r.status_code == 502
-    assert r.json() == {"detail": "The AI service could not read this resume. Please try again."}
+    assert r.json() == {"detail": "The AI service could not finish this request. Please try again or pick another model."}
     assert "PROVIDER-BODY" not in r.text and "Jane" not in r.text and GROQ_KEY not in r.text
     assert logged == []
 

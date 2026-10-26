@@ -57,7 +57,7 @@ MODEL_LABELS: dict[str, str] = {
 }
 
 BUSY_MESSAGE = "The AI service is busy right now. Please wait a minute and try again."
-FAILED_MESSAGE = "The AI service could not read this resume. Please try again."
+FAILED_MESSAGE = "The AI service could not finish this request. Please try again or pick another model."
 
 
 # ---------------------------------------------------------------------------
@@ -167,6 +167,16 @@ def _answer_text(provider: str, data) -> str | None:
     return text if isinstance(text, str) and text.strip() else None
 
 
+def _finish_reason(provider: str, data) -> str:
+    """Why the model stopped (e.g. "length" / "MAX_TOKENS" = answer was cut off). Log only."""
+    try:
+        if provider == "gemini":
+            return str(data["candidates"][0].get("finishReason") or "")
+        return str(data["choices"][0].get("finish_reason") or "")
+    except (KeyError, IndexError, TypeError, AttributeError):
+        return ""
+
+
 def parse_json_object(text: str | None) -> dict | None:
     """Lenient parse: ignore ``` fences and chatter around the outermost {...}."""
     if not text:
@@ -238,13 +248,18 @@ def _call_once(client: httpx.Client, provider: str, model: str, key: str,
             "Please pick another model.",
         )
     if code >= 400:
-        raise _failed(provider, f"HTTP {code}")
+        raise _failed(provider, f"HTTP {code}{_error_info(response)}")
 
     try:
         data = response.json()
     except ValueError:
+        print(f"[ai_providers] {provider} answer was not JSON")
         return None
-    return parse_json_object(_answer_text(provider, data))
+    result = parse_json_object(_answer_text(provider, data))
+    if result is None:
+        print(f"[ai_providers] {provider} answer unusable "
+              f"(finish reason: {_finish_reason(provider, data) or 'unknown'})")
+    return result
 
 
 def complete_json(settings: Settings, model_id: str, system: str, user: str) -> dict:
