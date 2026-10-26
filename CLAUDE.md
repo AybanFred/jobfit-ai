@@ -34,8 +34,8 @@ rephrase, reorder and highlight real data only. Missing skills go to a "gaps" li
 
 ## Roadmap and current status
 - [x] Phase 1 — Foundation: Supabase schema + RLS, FastAPI skeleton, Ionic app, login works
-- [ ] Phase 2 — Master Profile: profile, experience, projects, education, skills screens, resume import  ← CURRENT
-- [ ] Phase 3 — AI core: JD parsing, skill matcher, resume + cover letter generation, validation
+- [x] Phase 2 — Master Profile: profile, experience, projects, education, skills screens, resume import
+- [ ] Phase 3 — AI core: JD parsing, skill matcher, resume + cover letter generation, validation  ← CURRENT
 - [ ] Phase 4 — Export & editor: DOCX/PDF templates, editor screen, Storage uploads
 - [ ] Phase 5 — Tracker & logs: application tracker, activity logs, analytics dashboard
 - [ ] Phase 6 — Automation: share-to-app, follow-up reminders, weekly report
