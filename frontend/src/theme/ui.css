@@ -95,6 +95,18 @@
   font-size: 0.9rem;
   line-height: 1.4;
 }
+/* read by screen readers, not shown (live messages such as "Subject copied") */
+.ui-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
 
 /* ---------- Pills ---------- */
 .ui-pill {

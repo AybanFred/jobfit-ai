@@ -40,6 +40,10 @@ export const useJobsStore = defineStore('jobs', {
     jobUrl: '',
     jobTitle: '',
     company: '',
+    /** Optional recruiter address. Saved in the Tracker only; never sent to the AI. */
+    recruiterEmail: '',
+    /** Also write a short application email (kept for the next job, like the template and model). */
+    writeEmail: true,
     /** The pasted job description (kept when something fails, so nothing is lost). */
     text: '',
     resumeTab: 'saved' as ResumeTab,
@@ -82,11 +86,13 @@ export const useJobsStore = defineStore('jobs', {
         jobUrl: this.jobUrl,
         jobTitle: this.jobTitle,
         company: this.company,
+        recruiterEmail: this.recruiterEmail,
         text: this.text,
         tab: this.resumeTab,
         resumeId: this.effectiveResumeId,
         template: this.template,
         modelId: this.modelId,
+        writeEmail: this.writeEmail,
       };
     },
     formErrors(): TailorFormErrors {
@@ -103,6 +109,8 @@ export const useJobsStore = defineStore('jobs', {
     setUrl(value: string) { this.jobUrl = value; },
     setJobTitle(value: string) { this.jobTitle = value; },
     setCompany(value: string) { this.company = value; },
+    setRecruiterEmail(value: string) { this.recruiterEmail = value; },
+    setWriteEmail(on: boolean) { this.writeEmail = on; },
     setModel(id: string | null) { this.modelId = id; },
     setResume(id: string | null) { this.resumeId = id; },
     setTemplate(id: unknown) { if (isTemplateId(id)) this.template = id; },
@@ -187,9 +195,9 @@ export const useJobsStore = defineStore('jobs', {
     },
 
     /**
-     * The Go button: asks the AI for a tailored resume and cover letter (the backend saves them to the Tracker).
-     * On success the job link and text are cleared (resume, template and model stay) and the result is returned;
-     * otherwise null, with every input kept.
+     * The Go button: asks the AI for a tailored resume, cover letter and (if chosen) email; the backend saves
+     * them to the Tracker. On success the per-job fields are cleared (resume, template, model and the email
+     * choice stay) and the result is returned; otherwise null, with every input kept.
      */
     async tailor(): Promise<TailorResult | null> {
       if (!this.canGo) return null;
@@ -212,6 +220,7 @@ export const useJobsStore = defineStore('jobs', {
         this.jobUrl = '';
         this.jobTitle = '';
         this.company = '';
+        this.recruiterEmail = '';
         this.text = '';
         this.phase = 'form';
         void tapHaptic('medium');

@@ -17,7 +17,7 @@
             <IconChip :icon="sparklesOutline" tone="primary" size="lg" />
             <div>
               <h1 id="tailor-title" class="ui-h1 small">Tailor your resume</h1>
-              <p class="lead">Paste a job post. We write a resume and cover letter for it using only your real experience.</p>
+              <p class="lead">Paste a job post. We write a resume, a cover letter and a short email for it using only your real experience.</p>
             </div>
           </div>
 
@@ -77,6 +77,41 @@
                 @ionBlur="companyTouched = true"
               />
             </div>
+
+            <!-- Recruiter email (optional). autocomplete is off on purpose: "email" would suggest the user's own address. -->
+            <div>
+              <ion-input
+                class="field"
+                :class="invalid(!!recruiterError)"
+                label="Recruiter email (optional)"
+                label-placement="stacked"
+                fill="outline"
+                type="email"
+                inputmode="email"
+                autocapitalize="off"
+                autocomplete="off"
+                :spellcheck="false"
+                placeholder="recruiter@company.com"
+                :maxlength="MAX_EMAIL_CHARS"
+                helper-text="Saved in your Tracker so you can email them later. Not sent to the AI."
+                :error-text="recruiterError"
+                :value="store.recruiterEmail"
+                @ionInput="store.setRecruiterEmail(String($event.detail.value ?? ''))"
+                @ionBlur="recruiterTouched = true"
+              />
+            </div>
+
+            <!-- Application email on/off (kept for the next job) -->
+            <ion-toggle
+              class="email-toggle"
+              justify="space-between"
+              label-placement="start"
+              helper-text="A short email to send with your resume and cover letter. You can also write it later in the Tracker."
+              :checked="store.writeEmail"
+              @ionChange="onWriteEmail($event.detail.checked)"
+            >
+              Also write an application email
+            </ion-toggle>
 
             <!-- Job description -->
             <div>
@@ -250,7 +285,7 @@ import { useRouter } from 'vue-router';
 import {
   IonPage, IonHeader, IonToolbar, IonTitle, IonContent, IonButton, IonIcon, IonSpinner, IonInput, IonTextarea,
   IonRefresher, IonRefresherContent, IonSkeletonText, IonSegment, IonSegmentButton, IonLabel, IonSelect,
-  IonSelectOption, IonProgressBar, onIonViewWillEnter,
+  IonSelectOption, IonProgressBar, IonToggle, onIonViewWillEnter,
 } from '@ionic/vue';
 import {
   alertCircleOutline, checkmarkCircle, documentTextOutline, personCircleOutline, sparklesOutline,
@@ -260,8 +295,8 @@ import ImportDropZone from '@/components/ImportDropZone.vue';
 import ImportModelPicker from '@/components/ImportModelPicker.vue';
 import { useJobsStore } from '@/stores/jobs';
 import {
-  MAX_JOB_CHARS, MAX_SHORT_CHARS, MAX_URL_CHARS, MIN_JOB_CHARS, TEMPLATES, charCountLabel, firstFormProblem, formatFileSize,
-  resumeLabel, statusLineAt, templateHint, type ResumeTab,
+  MAX_EMAIL_CHARS, MAX_JOB_CHARS, MAX_SHORT_CHARS, MAX_URL_CHARS, MIN_JOB_CHARS, TEMPLATES, charCountLabel, firstFormProblem,
+  formatFileSize, resumeLabel, savedToTrackerMessage, statusLineAt, templateHint, type ResumeTab,
 } from '@/services/jobsLogic';
 import { showToast } from '@/services/feedback';
 import { tapHaptic } from '@/services/haptics';
@@ -279,6 +314,7 @@ const errorRef = ref<HTMLElement | null>(null);
 const urlTouched = ref(false);
 const titleTouched = ref(false);
 const companyTouched = ref(false);
+const recruiterTouched = ref(false);
 
 const tooShort = computed(() => store.text.trim().length > 0 && store.text.trim().length < MIN_JOB_CHARS);
 const textHint = computed(() => (tooShort.value ? `Please paste at least ${MIN_JOB_CHARS} characters.` : ''));
@@ -286,6 +322,7 @@ const textHint = computed(() => (tooShort.value ? `Please paste at least ${MIN_J
 const urlError = computed(() => (urlTouched.value ? store.formErrors.url : ''));
 const titleError = computed(() => (titleTouched.value ? store.formErrors.title : ''));
 const companyError = computed(() => (companyTouched.value ? store.formErrors.company : ''));
+const recruiterError = computed(() => (recruiterTouched.value ? store.formErrors.recruiterEmail : ''));
 const goHint = computed(() =>
   (store.uploading ? 'Please wait until your resume has uploaded.' : firstFormProblem(store.formErrors)));
 const uploadedSize = computed(() => formatFileSize(store.uploaded?.size_bytes ?? 0));
@@ -294,7 +331,8 @@ const invalid = (bad: boolean) => (bad ? { 'ion-invalid': true, 'ion-touched': t
 // Rotating status lines while the AI works.
 const now = ref(Date.now());
 let ticker: ReturnType<typeof setInterval> | undefined;
-const statusLine = computed(() => statusLineAt(now.value - store.workingSince));
+// The form (and so the email toggle) is hidden while working, so writeEmail is the choice of this Go.
+const statusLine = computed(() => statusLineAt(now.value - store.workingSince, store.writeEmail));
 
 function scrollToTop() {
   void contentRef.value?.$el?.scrollToTop?.(reduced ? 0 : 300);
@@ -335,14 +373,22 @@ function onChangeFile() {
   store.clearUploaded();
 }
 
+function onWriteEmail(on: unknown) {
+  tapHaptic();
+  store.setWriteEmail(on === true);
+}
+
 async function onGo() {
   tapHaptic();
-  urlTouched.value = titleTouched.value = companyTouched.value = true;
+  urlTouched.value = titleTouched.value = companyTouched.value = recruiterTouched.value = true;
+  const askedForEmail = store.writeEmail;
   const result = await store.tailor();
   if (!result) return; // the error (if any) is shown above the button
   // The form is empty again for the next job.
-  urlTouched.value = titleTouched.value = companyTouched.value = false;
-  void showToast('Saved to your Tracker');
+  urlTouched.value = titleTouched.value = companyTouched.value = recruiterTouched.value = false;
+  // When the email is missing the toast is longer (it points to the Email tab), so it stays a bit longer.
+  const emailMissing = askedForEmail && !result.email;
+  void showToast(savedToTrackerMessage(askedForEmail, result), 'success', emailMissing ? 4000 : undefined);
   // Open the new application, unless the user went to another screen while the AI was working.
   if (!router.currentRoute.value.path.startsWith('/tabs/jobs')) return;
   const id = result.application_id;
@@ -380,6 +426,9 @@ onIonViewWillEnter(() => {
 .count { margin: 0 0 0 auto; font-size: 0.8rem; color: var(--ui-text-soft); font-variant-numeric: tabular-nums; }
 .note { margin: 8px 4px 0; font-size: 0.8rem; line-height: 1.4; color: var(--ui-text-soft); }
 .error { margin: 10px 0 0; }
+.email-toggle { width: 100%; min-height: 44px; font-size: 0.95rem; font-weight: 600; }
+.email-toggle::part(label) { white-space: normal; line-height: 1.35; }
+.email-toggle::part(helper-text) { font-weight: 400; line-height: 1.4; color: var(--ui-text-soft); }
 
 .group-title { margin: 0 0 8px 4px; font-size: 0.9rem; font-weight: 650; }
 .seg { min-height: 44px; --background: var(--ui-soft); border-radius: 14px; }

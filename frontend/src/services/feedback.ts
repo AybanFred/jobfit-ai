@@ -2,11 +2,11 @@ import { actionSheetController, alertController, toastController } from '@ionic/
 
 // Small helpers for short messages, "are you sure?" questions and pick-one menus.
 
-/** A short message at the top of the screen (the bottom is taken by the tab bar). */
-export async function showToast(message: string, kind: 'success' | 'error' = 'success'): Promise<void> {
+/** A short message at the top of the screen (the bottom is taken by the tab bar). `durationMs` for longer texts. */
+export async function showToast(message: string, kind: 'success' | 'error' = 'success', durationMs?: number): Promise<void> {
   const toast = await toastController.create({
     message,
-    duration: kind === 'error' ? 3500 : 2200,
+    duration: durationMs ?? (kind === 'error' ? 3500 : 2200),
     position: 'top',
     color: kind === 'error' ? 'danger' : 'success',
   });

@@ -168,9 +168,10 @@
             Please check {{ warnings.length }} line{{ warnings.length === 1 ? '' : 's' }} in the Match tab
           </button>
 
-          <ion-segment class="seg fade-in-up" style="--i: 2" :value="tab" @ionChange="onTab($event.detail.value)">
+          <ion-segment class="seg doc-seg fade-in-up" style="--i: 2" :value="tab" @ionChange="onTab($event.detail.value)">
             <ion-segment-button value="resume"><ion-label>Resume</ion-label></ion-segment-button>
             <ion-segment-button value="letter"><ion-label>Cover letter</ion-label></ion-segment-button>
+            <ion-segment-button value="email"><ion-label>Email</ion-label></ion-segment-button>
             <ion-segment-button value="match"><ion-label>Match</ion-label></ion-segment-button>
             <ion-segment-button value="job"><ion-label>Job post</ion-label></ion-segment-button>
           </ion-segment>
@@ -219,9 +220,18 @@
               <p v-else class="ui-surface ui-card none">No cover letter was saved for this job.</p>
             </template>
 
-            <!-- Match -->
+            <!-- Email -->
+            <ApplicationEmailPanel
+              v-else-if="tab === 'email'"
+              :detail="detail"
+              :model-id="jobs.modelId"
+              :mark-applied="markApplied"
+              :active="pageActive"
+            />
+
+            <!-- Match (email warnings are shown on the Email tab instead) -->
             <template v-else-if="tab === 'match'">
-              <JobMatchSummary v-if="detail.match" :match="matchResultOf(detail.match)" :warnings="detail.match.warnings" />
+              <JobMatchSummary v-if="detail.match" :match="matchResultOf(detail.match)" :warnings="warnings" />
               <p v-else class="ui-surface ui-card none">No match details were saved for this job.</p>
             </template>
 
@@ -254,7 +264,7 @@
               <ion-icon slot="start" :icon="trashOutline" aria-hidden="true" />
               Delete application
             </ion-button>
-            <p class="fine">Removes the job, its resume and cover letter from your Tracker.</p>
+            <p class="fine">Removes the job, its resume, cover letter and email from your Tracker.</p>
           </section>
         </template>
       </div>
@@ -267,12 +277,13 @@ import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import {
   IonPage, IonHeader, IonToolbar, IonTitle, IonContent, IonButtons, IonButton, IonIcon, IonSpinner, IonSelect,
   IonSelectOption, IonTextarea, IonSegment, IonSegmentButton, IonLabel, IonSkeletonText, IonRefresher,
-  IonRefresherContent, IonAccordionGroup, IonAccordion, IonItem, onIonViewWillEnter, useIonRouter,
+  IonRefresherContent, IonAccordionGroup, IonAccordion, IonItem, onIonViewWillEnter, onIonViewWillLeave, useIonRouter,
 } from '@ionic/vue';
 import {
   alertCircleOutline, analyticsOutline, arrowBackSharp, calendarOutline, checkmarkCircle, chevronBack,
   documentTextOutline, downloadOutline, openOutline, trashOutline,
 } from 'ionicons/icons';
+import ApplicationEmailPanel from '@/components/ApplicationEmailPanel.vue';
 import CoverLetterPreview from '@/components/CoverLetterPreview.vue';
 import EmptyState from '@/components/EmptyState.vue';
 import HarvardResumePreview from '@/components/HarvardResumePreview.vue';
@@ -283,16 +294,20 @@ import { tapHaptic } from '@/services/haptics';
 import { prefersReducedMotion } from '@/services/motion';
 import {
   FORMAT_LABEL, MAX_NOTES_CHARS, STATUSES, appCompanyLine, appTitle, cleanNotes, detailDocId, formatDate, isStatus,
-  matchResultOf, scoreText, statusLabel, type ApplicationPatch, type DocType, type ExportFormat,
+  matchResultOf, matchWarningsOf, scoreText, statusLabel, type ApplicationPatch, type DocType, type ExportFormat,
 } from '@/services/trackerLogic';
+import { useJobsStore } from '@/stores/jobs';
 import { useTrackerStore } from '@/stores/tracker';
 
-type DetailTab = 'resume' | 'letter' | 'match' | 'job';
+type DetailTab = 'resume' | 'letter' | 'email' | 'match' | 'job';
+const TABS: readonly DetailTab[] = ['resume', 'letter', 'email', 'match', 'job'];
 
 // The route passes the application id as a prop (router: props: true).
 const props = defineProps<{ id: string }>();
 
 const store = useTrackerStore();
+// The Email tab writes with the AI model chosen on the Jobs tab (null = the server's default).
+const jobs = useJobsStore();
 const ionRouter = useIonRouter();
 const reduced = prefersReducedMotion();
 const FORMATS: readonly ExportFormat[] = ['pdf', 'docx'];
@@ -303,20 +318,27 @@ const domId = computed(() => props.id.replace(/[^a-zA-Z0-9_-]/g, '_'));
 
 const detail = computed(() => store.details[props.id] ?? null);
 const status = computed(() => store.detailStatus[props.id]);
-const warnings = computed(() => detail.value?.match?.warnings ?? []);
+// Match tab warnings only: lines about the email are shown (and counted) on the Email tab.
+const warnings = computed(() => matchWarningsOf(detail.value?.match?.warnings ?? []));
 const resumeDocId = computed(() => (detail.value ? detailDocId(detail.value, 'resume') : null));
 const letterDocId = computed(() => (detail.value ? detailDocId(detail.value, 'cover_letter') : null));
 
 const tab = ref<DetailTab>('resume');
 function onTab(value: unknown) {
-  if (value === 'resume' || value === 'letter' || value === 'match' || value === 'job') tab.value = value;
+  if (TABS.includes(value as DetailTab)) tab.value = value as DetailTab;
 }
+
+/** False while another screen is in front (Ionic keeps this page in memory). */
+const pageActive = ref(true);
+const markApplied = () => save({ status: 'applied' });
 
 // ----- saving (status, dates, notes) -----
 type SaveState = 'idle' | 'saved' | 'error';
 const saveState = ref<SaveState>('idle');
 const saveMessage = ref('');
-const isSaving = computed(() => !!store.saving[props.id]);
+// Only this card's own saves (the Email tab saves the recruiter address with its own "Saving…" line).
+const savesRunning = ref(0);
+const isSaving = computed(() => savesRunning.value > 0);
 let saveSeq = 0;
 let savedTimer: ReturnType<typeof setTimeout> | undefined;
 onBeforeUnmount(() => clearTimeout(savedTimer));
@@ -326,7 +348,13 @@ async function save(patch: ApplicationPatch): Promise<boolean> {
   clearTimeout(savedTimer);
   saveState.value = 'idle';
   saveMessage.value = '';
-  const problem = await store.patchApplication(props.id, patch);
+  savesRunning.value += 1;
+  let problem = '';
+  try {
+    problem = await store.patchApplication(props.id, patch);
+  } finally {
+    savesRunning.value -= 1;
+  }
   if (problem) {
     // Always show a failure, even if another save started meanwhile (the change was undone).
     saveState.value = 'error';
@@ -391,7 +419,11 @@ async function onRefresh(event: CustomEvent) {
 
 // Every time the screen is shown, (re)load it. A cached copy stays on screen meanwhile.
 onIonViewWillEnter(() => {
+  pageActive.value = true;
   void store.loadDetail(props.id);
+});
+onIonViewWillLeave(() => {
+  pageActive.value = false;
 });
 </script>
 
@@ -437,6 +469,10 @@ onIonViewWillEnter(() => {
 .seg { min-height: 44px; --background: var(--ui-soft); border-radius: 14px; }
 .seg ion-segment-button { min-width: 0; --padding-start: 4px; --padding-end: 4px; }
 .seg ion-label { white-space: normal; line-height: 1.2; font-size: 0.82rem; }
+/* Five tabs on a phone: normal letter case so each word fits (Material's uppercase cut "Resume" in two).
+   Long labels wrap between words only. */
+.doc-seg ion-segment-button { text-transform: none; letter-spacing: 0; }
+.doc-seg ion-label { overflow-wrap: normal; word-break: normal; }
 .tab-body { display: flex; flex-direction: column; gap: 12px; }
 .dl-row { display: flex; flex-wrap: wrap; gap: 8px; }
 .dl-btn { margin: 0; min-height: 40px; flex: 1 1 140px; max-width: 240px; }

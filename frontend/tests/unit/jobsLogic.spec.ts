@@ -4,13 +4,15 @@ import { describe, it, expect, vi } from 'vitest';
 vi.mock('@/services/supabase', () => ({ supabase: { auth: { getSession: async () => ({ data: { session: null } }) } } }));
 
 import {
-  DEFAULT_TEMPLATE, MAX_JOB_CHARS, MAX_URL_CHARS, MIN_JOB_CHARS, TAILOR_STATUS_LINES, TEMPLATES, TIMEOUT_MESSAGE,
-  buildTailorRequest, charCountLabel, cleanJobUrl, contactParts, defaultResumeTab, firstFormProblem, formatFileSize,
-  formatJobDate, friendlyJobError, hasFormErrors, isTemplateId, jobCompany, jobFacts, jobTitle, letterIsEmpty,
-  matchSentence, normalizeCoverLetter, normalizeJob, normalizeJobList, normalizeParsedJob, normalizeResume,
-  normalizeResumeList, normalizeScore, normalizeTailorOut, normalizeTailoredResume, pickResumeId, readApiError,
-  resumeIsEmpty, resumeLabel, scoreLabel, statusLineAt, templateHint, validateJobText, validateJobUrl,
-  validateTailorForm, type TailorForm,
+  DEFAULT_TEMPLATE, EMAIL_ERROR, EMAIL_STATUS_LINE, MAX_EMAIL_CHARS, MAX_JOB_CHARS, MAX_URL_CHARS, MIN_JOB_CHARS,
+  RECRUITER_EMAIL_HINT, TAILOR_STATUS_LINES, TEMPLATES, TIMEOUT_MESSAGE,
+  buildTailorRequest, charCountLabel, cleanEmail, cleanEmailBody, cleanEmailSubject, cleanJobUrl, contactParts,
+  defaultResumeTab, firstFormProblem, formatFileSize, formatJobDate, friendlyJobError, hasFormErrors, isEmailAddress,
+  isTemplateId, jobCompany, jobFacts, jobTitle, letterIsEmpty, matchSentence, normalizeCoverLetter, normalizeEmailDraft,
+  normalizeJob, normalizeJobList, normalizeParsedJob, normalizeResume, normalizeResumeList, normalizeScore,
+  normalizeTailorOut, normalizeTailoredResume, pickResumeId, readApiError, resumeIsEmpty, resumeLabel,
+  savedToTrackerMessage, scoreLabel, statusLineAt, statusLines, templateHint, validateJobText, validateJobUrl,
+  validateOptionalEmail, validateTailorForm, type TailorForm,
 } from '@/services/jobsLogic';
 
 const TEXT = 'We are hiring a senior developer to build our web platform with Python and Vue.';
@@ -84,8 +86,8 @@ describe('templates', () => {
 
 describe('tailor form', () => {
   const ok: TailorForm = {
-    jobUrl: '', jobTitle: 'Backend Engineer', company: 'Globex Inc',
-    text: TEXT, tab: 'saved', resumeId: 'r1', template: 'harvard', modelId: 'groq:x',
+    jobUrl: '', jobTitle: 'Backend Engineer', company: 'Globex Inc', recruiterEmail: '',
+    text: TEXT, tab: 'saved', resumeId: 'r1', template: 'harvard', modelId: 'groq:x', writeEmail: true,
   };
 
   it('accepts a complete form', () => {
@@ -123,6 +125,26 @@ describe('tailor form', () => {
     expect(firstFormProblem(validateTailorForm({ ...ok, text: '', modelId: null }))).toMatch(/paste the job description/);
   });
 
+  it('accepts an empty or valid recruiter email, and blocks Go for an invalid one', () => {
+    expect(validateTailorForm({ ...ok, recruiterEmail: '' }).recruiterEmail).toBe('');
+    expect(validateTailorForm({ ...ok, recruiterEmail: '   ' }).recruiterEmail).toBe('');
+    expect(validateTailorForm({ ...ok, recruiterEmail: ' sam@globex.com ' }).recruiterEmail).toBe('');
+    const bad = validateTailorForm({ ...ok, recruiterEmail: 'sam@globex' });
+    expect(bad.recruiterEmail).toBe(EMAIL_ERROR);
+    expect(hasFormErrors(bad)).toBe(true);
+  });
+
+  it('puts the recruiter email after the company and before the job description in the first-problem order', () => {
+    // link, title and company come first
+    expect(firstFormProblem(validateTailorForm({ ...ok, company: '', recruiterEmail: 'bad' }))).toMatch(/company/);
+    expect(firstFormProblem(validateTailorForm({ ...ok, jobUrl: 'bad', recruiterEmail: 'bad' }))).toMatch(/http/);
+    // then the recruiter email (with its own hint), before the text, resume, template and model
+    expect(firstFormProblem(validateTailorForm({ ...ok, recruiterEmail: 'bad', text: '', modelId: null, resumeId: null })))
+      .toBe(RECRUITER_EMAIL_HINT);
+    expect(RECRUITER_EMAIL_HINT).toBe('Please fix the recruiter email, or leave it empty.');
+    expect(firstFormProblem(validateTailorForm({ ...ok, text: '' }))).toMatch(/paste the job description/);
+  });
+
   it('builds the request for a saved or uploaded resume', () => {
     expect(buildTailorRequest({
       ...ok, text: `  ${TEXT}  `, jobUrl: ' HTTPS://example.com/j ', jobTitle: ' Backend Engineer ', company: ' Globex Inc ',
@@ -131,12 +153,21 @@ describe('tailor form', () => {
       source_url: 'https://example.com/j',
       job_title: 'Backend Engineer',
       company: 'Globex Inc',
+      recruiter_email: null,
       source: 'resume',
       resume_id: 'r1',
       template: 'harvard',
       model_id: 'groq:x',
+      write_email: true,
     });
     expect(buildTailorRequest({ ...ok, tab: 'upload', resumeId: 'up1' })).toMatchObject({ source: 'resume', resume_id: 'up1' });
+  });
+
+  it('sends the recruiter email trimmed (or null) and the write_email choice', () => {
+    expect(buildTailorRequest({ ...ok, recruiterEmail: '  sam@globex.com ' })).toMatchObject({ recruiter_email: 'sam@globex.com' });
+    expect(buildTailorRequest({ ...ok, recruiterEmail: '   ' })).toMatchObject({ recruiter_email: null });
+    expect(buildTailorRequest({ ...ok, writeEmail: false })).toMatchObject({ write_email: false });
+    expect(buildTailorRequest({ ...ok, writeEmail: true })).toMatchObject({ write_email: true });
   });
 
   it('builds the request for the Master Profile without a resume id and with a null link when empty', () => {
@@ -294,6 +325,83 @@ describe('statusLineAt', () => {
     expect(statusLineAt(10000)).toBe(TAILOR_STATUS_LINES[2]);
     expect(statusLineAt(15000)).toBe(TAILOR_STATUS_LINES[0]);
     expect(statusLineAt(-100)).toBe(TAILOR_STATUS_LINES[0]);
+  });
+
+  it('adds the email line after the cover letter line only when an email is written', () => {
+    expect(EMAIL_STATUS_LINE).toBe('Writing your application email…');
+    expect(statusLines(false)).toEqual([...TAILOR_STATUS_LINES]);
+    expect(statusLines(true)).toEqual([...TAILOR_STATUS_LINES, EMAIL_STATUS_LINE]);
+    expect(statusLineAt(15000, true)).toBe(EMAIL_STATUS_LINE);
+    expect(statusLineAt(20000, true)).toBe(TAILOR_STATUS_LINES[0]);
+    expect(statusLineAt(15000, false)).toBe(TAILOR_STATUS_LINES[0]);
+  });
+});
+
+describe('recruiter email address', () => {
+  it('accepts normal addresses (same rules as the backend)', () => {
+    for (const good of ['sam@globex.com', 'first.last+jobs@mail.example.co.uk', 'a_b-c@x-y.io', "o'neil@acme.de", 'x@xn--bcher-kva.de']) {
+      expect(isEmailAddress(good), good).toBe(true);
+    }
+  });
+
+  it('rejects addresses without one @, a dot in the domain, or with spaces and bad dots', () => {
+    for (const bad of ['', 'sam', 'sam@', '@globex.com', 'sam@globex', 'sam@@globex.com', 'a@b@globex.com',
+      'sam smith@globex.com', 'sam@glo bex.com', '.sam@globex.com', 'sam.@globex.com', 'sa..m@globex.com',
+      'sam@-globex.com', 'sam@globex.c', 'sam@globex.123', 'säm@globex.com', 'sam@globex..com']) {
+      expect(isEmailAddress(bad), bad).toBe(false);
+    }
+  });
+
+  it('limits the length to 254 characters and the name part to 64', () => {
+    const domain = `${'d'.repeat(60)}.${'e'.repeat(60)}.${'f'.repeat(60)}.com`; // 186 characters
+    expect(isEmailAddress(`${'a'.repeat(64)}@${domain}`)).toBe(true); // 251 characters
+    expect(isEmailAddress(`${'a'.repeat(65)}@x.com`)).toBe(false);
+    const long = `${'a'.repeat(60)}@${'b'.repeat(60)}.${'c'.repeat(60)}.${'d'.repeat(60)}.${'e'.repeat(11)}`;
+    expect(long.length).toBe(255);
+    expect(isEmailAddress(long)).toBe(false);
+    expect(MAX_EMAIL_CHARS).toBe(254);
+  });
+
+  it('is optional: empty is fine, a bad address gets the friendly message, and spaces around are trimmed', () => {
+    expect(validateOptionalEmail('')).toBe('');
+    expect(validateOptionalEmail('  ')).toBe('');
+    expect(validateOptionalEmail(null)).toBe('');
+    expect(validateOptionalEmail('  sam@globex.com  ')).toBe('');
+    expect(validateOptionalEmail('sam@globex')).toBe('Please enter a valid email address, like name@company.com.');
+    expect(cleanEmail('  sam@globex.com ')).toBe('sam@globex.com');
+    expect(cleanEmail('   ')).toBeNull();
+    expect(cleanEmail(undefined)).toBeNull();
+  });
+});
+
+describe('application email from POST /tailor', () => {
+  it('cleans the email: one-line subject, CRLF to LF, no blank lines around, paragraphs kept', () => {
+    expect(normalizeEmailDraft({
+      subject: '  Application:\n Backend   Engineer ',
+      body: '\r\n\nDear Sam,  \r\n\r\nI am writing.\r\nBest,\nAna\n\n ',
+    })).toEqual({ subject: 'Application: Backend Engineer', body: 'Dear Sam,\n\nI am writing.\nBest,\nAna' });
+    expect(cleanEmailSubject(5)).toBe('');
+    expect(cleanEmailBody(null)).toBe('');
+  });
+
+  it('is null when missing, not an object, or completely empty; keeps a subject without a message', () => {
+    expect(normalizeEmailDraft(null)).toBeNull();
+    expect(normalizeEmailDraft('Hi')).toBeNull();
+    expect(normalizeEmailDraft([])).toBeNull();
+    expect(normalizeEmailDraft({ subject: ' ', body: '' })).toBeNull();
+    expect(normalizeEmailDraft({ subject: 'Hello' })).toEqual({ subject: 'Hello', body: '' });
+  });
+
+  it('is part of the tailor answer (null when the server sent none)', () => {
+    expect(normalizeTailorOut({ email: { subject: 'S', body: 'B' } })!.email).toEqual({ subject: 'S', body: 'B' });
+    expect(normalizeTailorOut({ email: null })!.email).toBeNull();
+    expect(normalizeTailorOut({})!.email).toBeNull();
+  });
+
+  it('says where to find the email when it was asked for but did not come back', () => {
+    expect(savedToTrackerMessage(true, { email: { subject: 'S', body: 'B' } })).toBe('Saved to your Tracker');
+    expect(savedToTrackerMessage(false, { email: null })).toBe('Saved to your Tracker');
+    expect(savedToTrackerMessage(true, { email: null })).toBe('Saved to your Tracker. Open the Email tab to write the email.');
   });
 });
 

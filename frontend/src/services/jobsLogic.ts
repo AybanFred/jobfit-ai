@@ -8,6 +8,8 @@ export const MAX_JOB_CHARS = 15000;
 export const MAX_URL_CHARS = 500;
 /** Job title and company (same limit as the backend). */
 export const MAX_SHORT_CHARS = 200;
+/** Recruiter email address (same limit as the backend and the database). */
+export const MAX_EMAIL_CHARS = 254;
 /** The screen gives up waiting after 3 minutes (the AI usually needs 30 to 120 seconds). */
 export const TAILOR_TIMEOUT_MS = 180_000;
 
@@ -109,16 +111,53 @@ export function validateShortField(value: string, label: string): string {
   return '';
 }
 
+// ---------- Email addresses (recruiter email on the Jobs form and in the Tracker) ----------
+
+export const EMAIL_ERROR = 'Please enter a valid email address, like name@company.com.';
+/** Shown under the disabled Go button when the recruiter email is the first problem. */
+export const RECRUITER_EMAIL_HINT = 'Please fix the recruiter email, or leave it empty.';
+
+// The same practical check as the backend (app/services/applications.py), so the server never says no:
+// a plain ASCII name part without leading, trailing or double dots, valid domain labels and a real ending.
+const EMAIL_LOCAL = /^[A-Za-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[A-Za-z0-9!#$%&'*+/=?^_`{|}~-]+)*$/;
+const EMAIL_LABEL = /^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$/;
+const EMAIL_TLD = /^(?:[A-Za-z]{2,63}|xn--[A-Za-z0-9-]{1,59})$/;
+
+/** The address as it is sent: trimmed, or null when the box is empty. */
+export function cleanEmail(value: string | null | undefined): string | null {
+  const v = typeof value === 'string' ? value.trim() : '';
+  return v || null;
+}
+
+/** True for one address like "name@company.com" (no spaces, one @, a dot in the domain, at most 254 characters). */
+export function isEmailAddress(value: string): boolean {
+  if (!value || value.length > MAX_EMAIL_CHARS || value.split('@').length !== 2) return false;
+  const [local, domain] = value.split('@');
+  const labels = domain.split('.');
+  return local.length <= 64 && EMAIL_LOCAL.test(local)
+    && labels.length >= 2 && labels.every((l) => EMAIL_LABEL.test(l)) && EMAIL_TLD.test(labels[labels.length - 1]);
+}
+
+/** An optional email address: '' when empty or valid, else the friendly error. */
+export function validateOptionalEmail(value: string | null | undefined): string {
+  const v = cleanEmail(value);
+  return !v || isEmailAddress(v) ? '' : EMAIL_ERROR;
+}
+
 /** Everything the form needs to send POST /tailor. `resumeId` is the resume of the chosen tab (null for profile). */
 export interface TailorForm {
   jobUrl: string;
   jobTitle: string;
   company: string;
+  /** Optional. Saved in the Tracker only; never sent to the AI. */
+  recruiterEmail: string;
   text: string;
   tab: ResumeTab;
   resumeId: string | null;
   template: string;
   modelId: string | null;
+  /** Also write a short application email. */
+  writeEmail: boolean;
 }
 
 export interface TailorFormErrors {
@@ -126,6 +165,7 @@ export interface TailorFormErrors {
   url: string;
   title: string;
   company: string;
+  recruiterEmail: string;
   resume: string;
   template: string;
   model: string;
@@ -141,6 +181,7 @@ export function validateTailorForm(f: TailorForm): TailorFormErrors {
     url: validateJobUrl(f.jobUrl),
     title: validateShortField(f.jobTitle, 'job title'),
     company: validateShortField(f.company, 'company'),
+    recruiterEmail: validateOptionalEmail(f.recruiterEmail),
     resume,
     template: isTemplateId(f.template) ? '' : 'Please choose a template.',
     model: f.modelId ? '' : 'Please choose an AI model.',
@@ -148,21 +189,24 @@ export function validateTailorForm(f: TailorForm): TailorFormErrors {
 }
 
 export const hasFormErrors = (e: TailorFormErrors): boolean =>
-  !!(e.text || e.url || e.title || e.company || e.resume || e.template || e.model);
+  !!(e.text || e.url || e.title || e.company || e.recruiterEmail || e.resume || e.template || e.model);
 
 /** The first thing to fix, in the order of the form (shown under the disabled Go button). */
 export const firstFormProblem = (e: TailorFormErrors): string =>
-  e.url || e.title || e.company || e.text || e.resume || e.template || e.model;
+  e.url || e.title || e.company || (e.recruiterEmail ? RECRUITER_EMAIL_HINT : '')
+  || e.text || e.resume || e.template || e.model;
 
 export interface TailorRequest {
   job_text: string;
   source_url: string | null;
   job_title: string;
   company: string;
+  recruiter_email: string | null;
   source: 'resume' | 'profile';
   resume_id: string | null;
   template: TemplateId;
   model_id: string | null;
+  write_email: boolean;
 }
 
 /** Body of POST /tailor. Call it only when the form has no errors. */
@@ -173,10 +217,12 @@ export function buildTailorRequest(f: TailorForm): TailorRequest {
     source_url: cleanJobUrl(f.jobUrl),
     job_title: f.jobTitle.trim(),
     company: f.company.trim(),
+    recruiter_email: cleanEmail(f.recruiterEmail),
     source: fromProfile ? 'profile' : 'resume',
     resume_id: fromProfile ? null : f.resumeId,
     template: isTemplateId(f.template) ? f.template : DEFAULT_TEMPLATE,
     model_id: f.modelId,
+    write_email: f.writeEmail !== false,
   };
 }
 
@@ -334,6 +380,12 @@ export interface MatchResult {
   gaps: string[];
 }
 
+/** The short application email: plain text, paragraphs separated by a blank line. */
+export interface EmailDraft {
+  subject: string;
+  body: string;
+}
+
 export interface TailorResult {
   application_id: string;
   job: Job | null;
@@ -341,6 +393,8 @@ export interface TailorResult {
   model: string;
   resume: TailoredResume;
   cover_letter: CoverLetter;
+  /** null when no email was asked for, or the AI wrote no usable one. */
+  email: EmailDraft | null;
   match: MatchResult;
   warnings: string[];
 }
@@ -388,6 +442,22 @@ export function normalizeCoverLetter(raw: unknown): CoverLetter {
   };
 }
 
+/** The email subject: one line, inner spaces collapsed. */
+export const cleanEmailSubject = (v: unknown): string =>
+  (typeof v === 'string' ? v.replace(/\s+/g, ' ').trim() : '');
+
+/** The email message: line breaks as "\n" (paragraphs stay apart), no blank lines at the start or end. */
+export const cleanEmailBody = (v: unknown): string =>
+  (typeof v === 'string' ? v.replace(/\r\n?/g, '\n').replace(/[ \t]+$/gm, '').replace(/^\n+|\s+$/g, '') : '');
+
+/** The email from POST /tailor, or null when there is none (not an object, or no subject and no message). */
+export function normalizeEmailDraft(raw: unknown): EmailDraft | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const r = raw as Record<string, unknown>;
+  const email = { subject: cleanEmailSubject(r.subject), body: cleanEmailBody(r.body) };
+  return email.subject || email.body ? email : null;
+}
+
 /** A score from 0 to 100. A fraction such as 0.82 is read as 82. Anything unusable becomes null. */
 export function normalizeScore(v: unknown): number | null {
   const n = typeof v === 'number' ? v : typeof v === 'string' && v.trim() ? Number(v) : NaN;
@@ -412,6 +482,7 @@ export function normalizeTailorOut(raw: unknown): TailorResult | null {
     model: text(r.model),
     resume: normalizeTailoredResume(r.resume),
     cover_letter: normalizeCoverLetter(r.cover_letter),
+    email: normalizeEmailDraft(r.email),
     match: normalizeMatch(r.match),
     warnings: strList(r.warnings),
   };
@@ -450,11 +521,25 @@ export const TAILOR_STATUS_LINES = [
   'Tailoring your resume…',
   'Writing your cover letter…',
 ] as const;
+export const EMAIL_STATUS_LINE = 'Writing your application email…';
 export const STATUS_LINE_MS = 5000;
 
+/** The status lines for one Go: the email line is added only when an email is being written. */
+export const statusLines = (withEmail = false): readonly string[] =>
+  (withEmail ? [...TAILOR_STATUS_LINES, EMAIL_STATUS_LINE] : TAILOR_STATUS_LINES);
+
 /** The status line to show after `elapsedMs` of waiting (they take turns every 5 seconds). */
-export const statusLineAt = (elapsedMs: number): string =>
-  TAILOR_STATUS_LINES[Math.floor(Math.max(0, elapsedMs) / STATUS_LINE_MS) % TAILOR_STATUS_LINES.length];
+export function statusLineAt(elapsedMs: number, withEmail = false): string {
+  const lines = statusLines(withEmail);
+  return lines[Math.floor(Math.max(0, elapsedMs) / STATUS_LINE_MS) % lines.length];
+}
+
+/** The toast after a successful Go. Points to the Email tab when an email was asked for but none came back. */
+export function savedToTrackerMessage(askedForEmail: boolean, result: Pick<TailorResult, 'email'>): string {
+  return askedForEmail && !result.email
+    ? 'Saved to your Tracker. Open the Email tab to write the email.'
+    : 'Saved to your Tracker';
+}
 
 // ---------- Showing saved items ----------
 

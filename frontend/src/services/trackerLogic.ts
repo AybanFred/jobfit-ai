@@ -1,5 +1,6 @@
 import {
-  normalizeCoverLetter, normalizeParsedJob, normalizeScore, normalizeTailoredResume, readApiError,
+  EMAIL_ERROR, cleanEmail, cleanEmailBody, cleanEmailSubject, isEmailAddress, normalizeCoverLetter, normalizeParsedJob,
+  normalizeScore, normalizeTailoredResume, readApiError,
   type CoverLetter, type MatchResult, type ParsedJob, type TailoredResume,
 } from './jobsLogic';
 
@@ -59,6 +60,8 @@ export interface EditableFields {
   applied_at: string | null;
   follow_up_at: string | null;
   notes: string | null;
+  /** Where to send the application email. Never sent to the AI. */
+  recruiter_email: string | null;
 }
 
 export interface ApplicationSummary extends EditableFields {
@@ -86,11 +89,26 @@ export interface AppMatchDetail {
   warnings: string[];
 }
 
+/** The newest application email of an application (plain text, paragraphs separated by a blank line). */
+export interface StoredEmail {
+  id: string;
+  created_at: string;
+  subject: string;
+  body: string;
+}
+
+/** POST /applications/{id}/email: the new email plus its warnings (each starts with "The email"). */
+export interface WrittenEmail extends StoredEmail {
+  warnings: string[];
+}
+
 export interface ApplicationDetail extends Omit<ApplicationSummary, 'job' | 'match'> {
   job: AppJob & { parsed: ParsedJob | null; raw_text: string };
   match: AppMatchDetail | null;
   resume: StoredDoc<TailoredResume> | null;
   cover_letter: StoredDoc<CoverLetter> | null;
+  /** null for older entries, when no email was asked for, or when writing it failed. */
+  email: StoredEmail | null;
   source_resume: { id: string; file_name: string } | null;
 }
 
@@ -172,6 +190,7 @@ function summaryFields(r: Record<string, unknown>, id: string): Omit<Application
     applied_at: dateOrNull(r.applied_at),
     follow_up_at: dateOrNull(r.follow_up_at),
     notes: typeof r.notes === 'string' && r.notes.trim() ? r.notes : null,
+    recruiter_email: typeof r.recruiter_email === 'string' ? cleanEmail(r.recruiter_email) : null,
     created_at: textOr(r.created_at),
     updated_at: textOr(r.updated_at),
     documents: normalizeDocRefs(r.documents),
@@ -212,6 +231,21 @@ function storedDoc<T>(raw: unknown, clean: (content: unknown) => T): StoredDoc<T
   return { id, template: strOrNull(r.template), created_at: textOr(r.created_at), content: clean(r.content) };
 }
 
+/** The saved email, or null when it has no id. Subject and message are '' when missing. */
+export function normalizeStoredEmail(raw: unknown): StoredEmail | null {
+  const r = asObject(raw);
+  const id = idOf(r.id);
+  if (!id) return null;
+  return { id, created_at: textOr(r.created_at), subject: cleanEmailSubject(r.subject), body: cleanEmailBody(r.body) };
+}
+
+/** The POST /applications/{id}/email answer, or null when it has no id. Only email warnings are kept. */
+export function normalizeWrittenEmail(raw: unknown): WrittenEmail | null {
+  const email = normalizeStoredEmail(raw);
+  if (!email) return null;
+  return { ...email, warnings: emailWarningsOf(strList(asObject(raw).warnings)) };
+}
+
 /** The full application. Returns null when it has no id. */
 export function normalizeApplicationDetail(raw: unknown): ApplicationDetail | null {
   const r = asObject(raw);
@@ -240,6 +274,7 @@ export function normalizeApplicationDetail(raw: unknown): ApplicationDetail | nu
       : null,
     resume: storedDoc(r.resume, normalizeTailoredResume),
     cover_letter: storedDoc(r.cover_letter, normalizeCoverLetter),
+    email: normalizeStoredEmail(r.email),
     source_resume: srcId ? { id: srcId, file_name: textOr(src.file_name) || 'Resume' } : null,
   };
 }
@@ -252,6 +287,7 @@ export function summaryOf(d: ApplicationDetail): ApplicationSummary {
     applied_at: d.applied_at,
     follow_up_at: d.follow_up_at,
     notes: d.notes,
+    recruiter_email: d.recruiter_email,
     created_at: d.created_at,
     updated_at: d.updated_at,
     job: {
@@ -280,6 +316,66 @@ export function docOf(documents: readonly DocRef[], type: DocType): DocRef | nul
 export function detailDocId(d: ApplicationDetail, type: DocType): string | null {
   const shown = type === 'resume' ? d.resume : d.cover_letter;
   return shown?.id ?? docOf(d.documents, type)?.id ?? null;
+}
+
+// ---------- Application email ----------
+
+/** Every warning about the email starts with this (the backend promises it). */
+export const EMAIL_WARNING_PREFIX = 'The email';
+export const isEmailWarning = (w: string): boolean => w.trim().startsWith(EMAIL_WARNING_PREFIX);
+/** Warnings for the Email tab. */
+export const emailWarningsOf = (warnings: readonly string[]): string[] => warnings.filter(isEmailWarning);
+/** Warnings for the Match tab (and its "Please check" pill): everything except the email ones. */
+export const matchWarningsOf = (warnings: readonly string[]): string[] => warnings.filter((w) => !isEmailWarning(w));
+
+/** Of two versions of the email, the newer one (by date; with no readable date, `fromServer` wins). */
+export function newestEmail(cached: StoredEmail | null, fromServer: StoredEmail | null): StoredEmail | null {
+  if (!cached || !fromServer) return fromServer ?? cached;
+  const a = parseDate(cached.created_at);
+  const b = parseDate(fromServer.created_at);
+  return !Number.isNaN(a) && !Number.isNaN(b) && a > b ? cached : fromServer;
+}
+
+/** The To field: '' when empty or valid, else the same friendly error as on the Jobs form. */
+export const validateRecruiterEmail = (value: string | null | undefined): string => {
+  const v = cleanEmail(value);
+  return !v || isEmailAddress(v) ? '' : EMAIL_ERROR;
+};
+
+/**
+ * A mailto: link that opens the user's email app with the message ready.
+ * Subject and message are fully encoded (&, ?, #, %, + and non-English letters are safe) and line breaks
+ * become CRLF, as RFC 6068 asks. The address is encoded too, except the "@". An empty address gives
+ * "mailto:?subject=…", so the user picks the recipient in the email app.
+ */
+export function buildMailtoUrl(to: string | null | undefined, subject: string, body: string): string {
+  const address = cleanEmail(to) ?? '';
+  const params: string[] = [];
+  const s = cleanEmailSubject(subject);
+  const b = (body ?? '').replace(/\r\n?/g, '\n').replace(/\n/g, '\r\n');
+  if (s) params.push(`subject=${encodeURIComponent(s)}`);
+  if (b.trim()) params.push(`body=${encodeURIComponent(b)}`);
+  const head = `mailto:${encodeURIComponent(address).replace(/%40/g, '@')}`;
+  return params.length ? `${head}?${params.join('&')}` : head;
+}
+
+export interface EmailSendState {
+  /** The mailto link, or null when the button must be disabled. */
+  href: string | null;
+  /** The lines under the button. */
+  hints: string[];
+}
+
+export const OPEN_EMAIL_HINTS = [
+  'Your email app opens with this message ready. You check it and press send yourself.',
+  'Nothing opened? Copy the text above and paste it into your email app.',
+] as const;
+
+/** Whether "Open in email app" can be used, its link, and the hint under it. */
+export function emailSendState(to: string, subject: string, body: string): EmailSendState {
+  if (!body.trim()) return { href: null, hints: ['There is no message to send yet. Write a new version first.'] };
+  if (validateRecruiterEmail(to)) return { href: null, hints: ['Please fix the email address above first.'] };
+  return { href: buildMailtoUrl(to, subject, body), hints: [...OPEN_EMAIL_HINTS] };
 }
 
 // ---------- Filtering, sorting and counting ----------
@@ -489,6 +585,29 @@ export function friendlyTrackerError(e: unknown, action: TrackerAction): string 
   }
   if (e instanceof TypeError) return OFFLINE;
   return `We could not ${VERB[action]}. Please try again.`;
+}
+
+/** 'first' = there is no email yet; 'regenerate' = a new version of the email that is shown now. */
+export type EmailWriteMode = 'first' | 'regenerate';
+
+/**
+ * Writing the email failed. Busy, offline and session problems get their own sentence; "not set up" and
+ * "unknown model" show the backend's short sentence; anything else says it failed (and, for a new
+ * version, that the current email is still there).
+ */
+export function friendlyEmailError(e: unknown, mode: EmailWriteMode): string {
+  const fallback = mode === 'first'
+    ? 'We could not write the email. Please try again.'
+    : 'We could not write a new version. Your current email is still here.';
+  if (e instanceof TypeError) return 'No internet connection. Please check it and try again.';
+  const err = readApiError(e);
+  if (!err) return fallback;
+  const { status, detail } = err;
+  if (status === 401 || status === 403) return 'Your session has ended. Please log in again.';
+  if (status === 404) return 'We could not find this application. It may have been deleted.';
+  if (status === 429) return 'The AI service is busy. Please try again in a minute.';
+  if (status === 400 || status === 422 || status === 503) return detail || fallback;
+  return fallback;
 }
 
 /** True when the error means "this application does not exist (any more)". */

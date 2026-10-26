@@ -1,15 +1,20 @@
 import { defineStore } from 'pinia';
 import {
-  deleteApplication, getApplication, listApplications, updateApplication,
+  deleteApplication, getApplication, listApplications, updateApplication, writeApplicationEmail,
 } from '@/services/applications';
 import { downloadDocument } from '@/services/documents';
 import { confirmAction, showToast } from '@/services/feedback';
 import { tapHaptic } from '@/services/haptics';
+import { isAbortError } from '@/services/resumeImport';
 import {
-  countByStatus, friendlyTrackerError, isNotFound, isSortKey, isStatusFilter, summaryOf, visibleApplications,
+  countByStatus, emailWarningsOf, friendlyEmailError, friendlyTrackerError, isNotFound, isSortKey, isStatusFilter,
+  newestEmail, summaryOf, visibleApplications,
   type AppStatus, type ApplicationDetail, type ApplicationPatch, type ApplicationSummary, type DocType,
   type EditableFields, type ExportFormat, type SortKey, type StatusCounts, type StatusFilter,
 } from '@/services/trackerLogic';
+
+/** Writing an email usually takes 10 to 60 seconds; after 2 minutes the screen stops waiting. */
+export const EMAIL_TIMEOUT_MS = 120_000;
 
 export type ListStatus = 'idle' | 'loading' | 'ready' | 'error';
 /** 'deleted' = removed on this device; the detail stays in memory only so the closing screen does not go blank. */
@@ -27,9 +32,25 @@ const patchRuns = new Map<string, number>();
 const pending = new Map<string, ApplicationPatch>();
 /** The last values the server confirmed, per application (used to undo a change that failed). */
 const confirmed = new Map<string, Confirmed>();
+/** Running "write the email" requests (cancel handle, time limit, run number) per application. */
+const emailJobs = new Map<string, { controller: AbortController; timer: ReturnType<typeof setTimeout> }>();
+const emailRuns = new Map<string, number>();
+
+function stopEmailRequest(id: string) {
+  const job = emailJobs.get(id);
+  if (!job) return;
+  clearTimeout(job.timer);
+  job.controller.abort();
+  emailJobs.delete(id);
+}
 
 const editableOf = (a: Confirmed): Confirmed => ({
-  status: a.status, applied_at: a.applied_at, follow_up_at: a.follow_up_at, notes: a.notes, updated_at: a.updated_at,
+  status: a.status,
+  applied_at: a.applied_at,
+  follow_up_at: a.follow_up_at,
+  notes: a.notes,
+  recruiter_email: a.recruiter_email,
+  updated_at: a.updated_at,
 });
 
 /**
@@ -57,6 +78,13 @@ export const useTrackerStore = defineStore('tracker', {
     deletingId: null as string | null,
     /** Downloads being prepared, keyed "docId:format". */
     downloading: {} as Record<string, boolean>,
+
+    /** Applications whose email the AI is writing right now. */
+    emailWriting: {} as Record<string, boolean>,
+    /** The last "could not write the email" message per application ('' or missing = none). */
+    emailError: {} as Record<string, string>,
+    /** Warnings that came with an email written on this device (newer than the saved match warnings). */
+    emailWarnings: {} as Record<string, { emailId: string; warnings: string[] }>,
   }),
 
   getters: {
@@ -75,6 +103,16 @@ export const useTrackerStore = defineStore('tracker', {
       return (docId: string, format?: ExportFormat): boolean => (format
         ? !!s.downloading[`${docId}:${format}`]
         : Object.keys(s.downloading).some((k) => k.startsWith(`${docId}:`)));
+    },
+    /** The warnings for the email shown now: those that came with it from this device, else the saved ones. */
+    emailWarningsFor(s) {
+      return (id: string): string[] => {
+        const d = s.details[id];
+        if (!d?.email) return [];
+        const fresh = s.emailWarnings[id];
+        if (fresh && fresh.emailId === d.email.id) return fresh.warnings;
+        return emailWarningsOf(d.match?.warnings ?? []);
+      };
     },
   },
 
@@ -121,7 +159,9 @@ export const useTrackerStore = defineStore('tracker', {
         if (myEpoch !== epoch || detailRuns.get(id) !== myRun) return;
         const p = pending.get(id);
         if (!p) confirmed.set(id, editableOf(d));
-        const shown = p ? { ...d, ...p } : d;
+        // An email written while this answer was on its way is newer than the one in the answer: keep it.
+        const email = newestEmail(this.details[id]?.email ?? null, d.email);
+        const shown = { ...d, ...p, email };
         this.details[id] = shown;
         this.detailStatus[id] = 'ready';
         // Keep the list row in step with what the detail shows.
@@ -197,12 +237,69 @@ export const useTrackerStore = defineStore('tracker', {
       return !problem;
     },
 
+    /**
+     * Asks the AI for a (new) application email. The email on screen stays until the new one arrives, and
+     * stays if this fails or is cancelled. Shows "Your email is ready" / "New version ready".
+     * Resolves to true when a new email is shown; false when it failed (see emailError), was cancelled or is
+     * already running.
+     */
+    async writeEmail(id: string, modelId: string | null): Promise<boolean> {
+      if (!id || this.emailWriting[id]) return false;
+      const mode = this.details[id]?.email ? 'regenerate' : 'first';
+      const myRun = (emailRuns.get(id) ?? 0) + 1;
+      emailRuns.set(id, myRun);
+      const myEpoch = epoch;
+      const controller = new AbortController();
+      let timedOut = false;
+      const timer = setTimeout(() => {
+        timedOut = true;
+        controller.abort();
+      }, EMAIL_TIMEOUT_MS);
+      emailJobs.set(id, { controller, timer });
+      this.emailWriting[id] = true;
+      delete this.emailError[id];
+      try {
+        const written = await writeApplicationEmail(id, modelId, controller.signal);
+        if (myEpoch !== epoch || emailRuns.get(id) !== myRun) return false;
+        const { warnings, ...email } = written;
+        const d = this.details[id];
+        if (d) this.details[id] = { ...d, email };
+        this.emailWarnings[id] = { emailId: email.id, warnings };
+        void tapHaptic('medium');
+        void showToast(mode === 'first' ? 'Your email is ready' : 'New version ready');
+        return true;
+      } catch (e) {
+        if (myEpoch !== epoch || emailRuns.get(id) !== myRun) return false;
+        if (isAbortError(e) && !timedOut) return false; // cancelled: back to how it was, no message
+        this.emailError[id] = friendlyEmailError(timedOut ? null : e, mode);
+        return false;
+      } finally {
+        if (myEpoch === epoch && emailRuns.get(id) === myRun) {
+          clearTimeout(timer);
+          emailJobs.delete(id);
+          delete this.emailWriting[id];
+        }
+      }
+    },
+
+    /** Cancel while the AI writes the email: the screen goes back to how it was. A late answer is ignored. */
+    cancelEmail(id: string) {
+      if (!this.emailWriting[id]) return;
+      emailRuns.set(id, (emailRuns.get(id) ?? 0) + 1);
+      stopEmailRequest(id);
+      delete this.emailWriting[id];
+    },
+
+    clearEmailError(id: string) {
+      delete this.emailError[id];
+    },
+
     /** Asks first, then deletes the application (and its job, documents and files). True when it is gone. */
     async removeApplication(id: string): Promise<boolean> {
       if (this.deletingId) return false;
       const ok = await confirmAction(
         'Delete this application?',
-        'The job, its tailored resume and cover letter will be removed. This cannot be undone.',
+        'The job, its tailored resume, cover letter and email will be removed. This cannot be undone.',
       );
       if (!ok) return false;
       const myEpoch = epoch;
@@ -279,6 +376,9 @@ export const useTrackerStore = defineStore('tracker', {
       else delete this.detailStatus[id];
       pending.delete(id);
       confirmed.delete(id);
+      this.cancelEmail(id);
+      delete this.emailError[id];
+      delete this.emailWarnings[id];
     },
 
     /** Forget everything (log out), so the next user never sees old data. */
@@ -289,6 +389,8 @@ export const useTrackerStore = defineStore('tracker', {
       patchRuns.clear();
       pending.clear();
       confirmed.clear();
+      for (const id of [...emailJobs.keys()]) stopEmailRequest(id);
+      emailRuns.clear();
       this.$reset();
     },
   },

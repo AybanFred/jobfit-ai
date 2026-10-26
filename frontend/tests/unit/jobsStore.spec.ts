@@ -220,6 +220,13 @@ describe('jobs store: form', () => {
     expect(s.canGo).toBe(false);
   });
 
+  it('writes the email by default', () => {
+    const s = useJobsStore();
+    expect(s.writeEmail).toBe(true);
+    expect(s.form.writeEmail).toBe(true);
+    expect(s.recruiterEmail).toBe('');
+  });
+
   it('ignores unknown templates', () => {
     const s = useJobsStore();
     s.setTemplate('fancy');
@@ -242,10 +249,12 @@ describe('jobs store: Go', () => {
       source_url: 'https://jobs.example.com/1',
       job_title: 'Backend Engineer',
       company: 'Globex Inc',
+      recruiter_email: null,
       source: 'resume',
       resume_id: 'r1',
       template: 'harvard',
       model_id: 'groq:x',
+      write_email: true,
     }, expect.any(AbortSignal));
     // back to an empty form; the resume, template and model choices stay
     expect(s.phase).toBe('form');
@@ -258,6 +267,36 @@ describe('jobs store: Go', () => {
     expect(s.resumeId).toBe('r1');
     expect(s.template).toBe('harvard');
     expect(s.modelId).toBe('groq:x');
+  });
+
+  it('sends the recruiter email and the email choice, then clears only the address for the next job', async () => {
+    const s = await readyStore();
+    s.setRecruiterEmail('  sam@globex.com ');
+    s.setWriteEmail(false);
+    tailor.tailorJob.mockResolvedValue(result());
+    expect(await s.tailor()).not.toBeNull();
+    expect(tailor.tailorJob.mock.calls[0][0]).toMatchObject({ recruiter_email: 'sam@globex.com', write_email: false });
+    expect(s.recruiterEmail).toBe('');
+    expect(s.writeEmail).toBe(false); // kept, like the template and model
+  });
+
+  it('an invalid recruiter email blocks Go; an empty one is fine', async () => {
+    const s = await readyStore();
+    s.setRecruiterEmail('sam@globex');
+    expect(s.formErrors.recruiterEmail).toMatch(/valid email address/);
+    expect(s.canGo).toBe(false);
+    expect(await s.tailor()).toBeNull();
+    expect(tailor.tailorJob).not.toHaveBeenCalled();
+    s.setRecruiterEmail('');
+    expect(s.canGo).toBe(true);
+  });
+
+  it('keeps the recruiter email when Go fails', async () => {
+    const s = await readyStore();
+    s.setRecruiterEmail('sam@globex.com');
+    tailor.tailorJob.mockRejectedValue(new Error('API 500: x'));
+    expect(await s.tailor()).toBeNull();
+    expect(s.recruiterEmail).toBe('sam@globex.com');
   });
 
   it('keeps an uploaded resume chosen after a successful Go', async () => {
@@ -355,6 +394,8 @@ describe('jobs store: Go', () => {
 describe('jobs store: reset', () => {
   it('wipes everything (log out) and ignores a request that answers later', async () => {
     const s = await readyStore();
+    s.setWriteEmail(false);
+    s.setRecruiterEmail('sam@globex.com');
     let resolve!: (r: TailorResult) => void;
     tailor.tailorJob.mockReturnValue(new Promise((r) => { resolve = r; }));
     const run = s.tailor();
@@ -367,5 +408,7 @@ describe('jobs store: reset', () => {
     expect(s.phase).toBe('form');
     expect(s.text).toBe('');
     expect(s.modelId).toBeNull();
+    expect(s.writeEmail).toBe(true);
+    expect(s.recruiterEmail).toBe('');
   });
 });

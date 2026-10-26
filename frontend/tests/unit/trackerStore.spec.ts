@@ -5,6 +5,7 @@ import { createPinia, setActivePinia } from 'pinia';
 vi.mock('@/services/supabase', () => ({ supabase: { auth: { getSession: async () => ({ data: { session: null } }) } } }));
 vi.mock('@/services/applications', () => ({
   listApplications: vi.fn(), getApplication: vi.fn(), updateApplication: vi.fn(), deleteApplication: vi.fn(),
+  writeApplicationEmail: vi.fn(),
 }));
 vi.mock('@/services/documents', () => ({ downloadDocument: vi.fn() }));
 vi.mock('@/services/feedback', () => ({ showToast: vi.fn(), confirmAction: vi.fn() }));
@@ -13,9 +14,10 @@ vi.mock('@/services/haptics', () => ({ tapHaptic: vi.fn() }));
 import * as appsSvc from '@/services/applications';
 import * as docsSvc from '@/services/documents';
 import { confirmAction, showToast } from '@/services/feedback';
-import { useTrackerStore } from '@/stores/tracker';
+import { EMAIL_TIMEOUT_MS, useTrackerStore } from '@/stores/tracker';
 import {
   normalizeApplicationDetail, normalizeApplicationSummary, type ApplicationDetail, type ApplicationSummary,
+  type WrittenEmail,
 } from '@/services/trackerLogic';
 
 const apps = vi.mocked(appsSvc);
@@ -68,7 +70,28 @@ beforeEach(() => {
 
 afterEach(() => {
   useTrackerStore().reset(); // clears the module-level undo data between tests
+  vi.useRealTimers();
 });
+
+const abortError = () => Object.assign(new Error('aborted'), { name: 'AbortError' });
+const written = (id: string, over: Partial<WrittenEmail> = {}): WrittenEmail => ({
+  id, created_at: '2026-03-13T10:00:00Z', subject: `Subject ${id}`, body: `Body ${id}`, warnings: [], ...over,
+});
+const oldEmail = { id: 'e-old', created_at: '2026-03-12T10:00:00Z', subject: 'Old subject', body: 'Old body' };
+
+/** A request that never answers by itself; it fails like fetch does when its signal is aborted. */
+function hangUntilAbort<T>() {
+  return (_id: string, _model: string | null, signal?: AbortSignal) => new Promise<T>((_resolve, reject) => {
+    signal?.addEventListener('abort', () => reject(abortError()));
+  });
+}
+
+async function withDetail(over: Record<string, unknown> = {}) {
+  const s = useTrackerStore();
+  apps.getApplication.mockResolvedValueOnce(detail('a', over));
+  await s.loadDetail('a');
+  return s;
+}
 
 describe('tracker store: list', () => {
   it('loads (loading then ready)', async () => {
@@ -389,6 +412,220 @@ describe('tracker store: downloads', () => {
     expect(await s.download('d1', 'docx', 'cover_letter')).toBe(false);
     expect(showToast).toHaveBeenCalledWith('PDF export is not set up on the server.', 'error');
     expect(s.isDownloading('d1')).toBe(false);
+  });
+});
+
+describe('tracker store: application email', () => {
+  it('writes the first email: busy while waiting, then shows it with its warnings and a toast', async () => {
+    const s = await withDetail();
+    const answer = deferred<WrittenEmail>();
+    apps.writeApplicationEmail.mockReturnValue(answer.promise);
+    const p = s.writeEmail('a', 'groq:x');
+    expect(s.emailWriting.a).toBe(true);
+    expect(apps.writeApplicationEmail).toHaveBeenCalledWith('a', 'groq:x', expect.any(AbortSignal));
+    answer.resolve(written('e1', { warnings: ['The email mentions Go.'] }));
+    expect(await p).toBe(true);
+    expect(s.emailWriting.a).toBeUndefined();
+    expect(s.details.a.email).toEqual({ id: 'e1', created_at: '2026-03-13T10:00:00Z', subject: 'Subject e1', body: 'Body e1' });
+    expect(s.emailWarningsFor('a')).toEqual(['The email mentions Go.']);
+    expect(showToast).toHaveBeenCalledWith('Your email is ready');
+  });
+
+  it('sends a null model when none is chosen (the server picks its default)', async () => {
+    const s = await withDetail();
+    apps.writeApplicationEmail.mockResolvedValue(written('e1'));
+    await s.writeEmail('a', null);
+    expect(apps.writeApplicationEmail).toHaveBeenCalledWith('a', null, expect.any(AbortSignal));
+  });
+
+  it('a new version keeps the old email until the new one arrives', async () => {
+    const s = await withDetail({ email: oldEmail });
+    const answer = deferred<WrittenEmail>();
+    apps.writeApplicationEmail.mockReturnValue(answer.promise);
+    const p = s.writeEmail('a', null);
+    expect(s.details.a.email?.subject).toBe('Old subject');
+    answer.resolve(written('e2'));
+    expect(await p).toBe(true);
+    expect(s.details.a.email?.id).toBe('e2');
+    expect(showToast).toHaveBeenCalledWith('New version ready');
+  });
+
+  it('a failed first try shows the error and leaves no email', async () => {
+    const s = await withDetail();
+    apps.writeApplicationEmail.mockRejectedValue(new Error('API 502: {"detail":"The AI service could not write the email. Please try again."}'));
+    expect(await s.writeEmail('a', null)).toBe(false);
+    expect(s.emailError.a).toBe('We could not write the email. Please try again.');
+    expect(s.details.a.email).toBeNull();
+    expect(s.emailWriting.a).toBeUndefined();
+    expect(showToast).not.toHaveBeenCalled();
+  });
+
+  it('a failed new version keeps the current email and says so; trying again clears the error', async () => {
+    const s = await withDetail({ email: oldEmail });
+    apps.writeApplicationEmail.mockRejectedValueOnce(new Error('API 500: x'));
+    expect(await s.writeEmail('a', null)).toBe(false);
+    expect(s.emailError.a).toBe('We could not write a new version. Your current email is still here.');
+    expect(s.details.a.email?.subject).toBe('Old subject');
+    const answer = deferred<WrittenEmail>();
+    apps.writeApplicationEmail.mockReturnValueOnce(answer.promise);
+    const p = s.writeEmail('a', null);
+    expect(s.emailError.a).toBeUndefined();
+    answer.resolve(written('e3'));
+    await p;
+    expect(s.details.a.email?.id).toBe('e3');
+  });
+
+  it('busy and offline get their own messages', async () => {
+    const s = await withDetail();
+    apps.writeApplicationEmail.mockRejectedValueOnce(new Error('API 429: {"detail":"busy"}'));
+    await s.writeEmail('a', null);
+    expect(s.emailError.a).toBe('The AI service is busy. Please try again in a minute.');
+    apps.writeApplicationEmail.mockRejectedValueOnce(new TypeError('Failed to fetch'));
+    await s.writeEmail('a', null);
+    expect(s.emailError.a).toBe('No internet connection. Please check it and try again.');
+  });
+
+  it('cancel aborts the request and goes back to how it was, without a message', async () => {
+    const s = await withDetail({ email: oldEmail });
+    apps.writeApplicationEmail.mockImplementation(hangUntilAbort<WrittenEmail>());
+    const p = s.writeEmail('a', null);
+    const signal = apps.writeApplicationEmail.mock.calls[0][2] as AbortSignal;
+    s.cancelEmail('a');
+    expect(signal.aborted).toBe(true);
+    expect(s.emailWriting.a).toBeUndefined();
+    expect(await p).toBe(false);
+    expect(s.emailError.a).toBeUndefined();
+    expect(s.details.a.email?.subject).toBe('Old subject');
+    expect(showToast).not.toHaveBeenCalled();
+  });
+
+  it('ignores an answer that arrives after cancel', async () => {
+    const s = await withDetail();
+    const answer = deferred<WrittenEmail>();
+    apps.writeApplicationEmail.mockReturnValue(answer.promise);
+    const p = s.writeEmail('a', null);
+    s.cancelEmail('a');
+    answer.resolve(written('late'));
+    expect(await p).toBe(false);
+    expect(s.details.a.email).toBeNull();
+  });
+
+  it('ignores a second tap while writing', async () => {
+    const s = await withDetail();
+    apps.writeApplicationEmail.mockReturnValue(new Promise(() => {}));
+    void s.writeEmail('a', null);
+    expect(await s.writeEmail('a', null)).toBe(false);
+    expect(apps.writeApplicationEmail).toHaveBeenCalledTimes(1);
+  });
+
+  it('gives up after the time limit with the normal failure message', async () => {
+    const s = await withDetail({ email: oldEmail });
+    vi.useFakeTimers();
+    apps.writeApplicationEmail.mockImplementation(hangUntilAbort<WrittenEmail>());
+    const p = s.writeEmail('a', null);
+    vi.advanceTimersByTime(EMAIL_TIMEOUT_MS);
+    expect(await p).toBe(false);
+    expect(s.emailError.a).toBe('We could not write a new version. Your current email is still here.');
+    expect(s.emailWriting.a).toBeUndefined();
+  });
+
+  it('a refresh that was already on its way does not bring back the older email', async () => {
+    const s = await withDetail({ email: oldEmail });
+    const refresh = deferred<ApplicationDetail>();
+    apps.getApplication.mockReturnValueOnce(refresh.promise);
+    const pr = s.loadDetail('a');
+    apps.writeApplicationEmail.mockResolvedValue(written('e-new', { created_at: '2026-03-14T10:00:00Z' }));
+    await s.writeEmail('a', null);
+    refresh.resolve(detail('a', { email: oldEmail, notes: 'From the server' }));
+    await pr;
+    expect(s.details.a.email?.id).toBe('e-new');
+    expect(s.details.a.notes).toBe('From the server');
+  });
+
+  it('shows the saved email warnings from the match until a new email brings its own', async () => {
+    const s = await withDetail({
+      email: oldEmail,
+      match: { score: 60, matched: [], gaps: [], warnings: ['Check line 2.', 'The email mentions Go.'] },
+    });
+    expect(s.emailWarningsFor('a')).toEqual(['The email mentions Go.']);
+    apps.writeApplicationEmail.mockResolvedValue(written('e2', { warnings: [] }));
+    await s.writeEmail('a', null);
+    expect(s.emailWarningsFor('a')).toEqual([]); // the new email has none
+    // an even newer email from the server (another device) uses the saved warnings again
+    apps.getApplication.mockResolvedValueOnce(detail('a', {
+      email: { ...oldEmail, id: 'e9', created_at: '2026-04-01T00:00:00Z' },
+      match: { warnings: ['The email is long.'] },
+    }));
+    await s.loadDetail('a');
+    expect(s.emailWarningsFor('a')).toEqual(['The email is long.']);
+  });
+
+  it('has no email warnings without an email', async () => {
+    const s = await withDetail({ match: { warnings: ['The email mentions Go.'] } });
+    expect(s.emailWarningsFor('a')).toEqual([]);
+    expect(s.emailWarningsFor('unknown')).toEqual([]);
+  });
+
+  it('log out stops a running request and wipes the email state', async () => {
+    const s = await withDetail();
+    apps.writeApplicationEmail.mockImplementation(hangUntilAbort<WrittenEmail>());
+    const p = s.writeEmail('a', null);
+    const signal = apps.writeApplicationEmail.mock.calls[0][2] as AbortSignal;
+    s.reset();
+    expect(signal.aborted).toBe(true);
+    expect(await p).toBe(false);
+    expect(s.emailWriting).toEqual({});
+    expect(s.emailError).toEqual({});
+  });
+});
+
+describe('tracker store: recruiter email', () => {
+  it('shows the new address at once in the detail and the list, then keeps the server row', async () => {
+    const s = await loaded([summary('a')]);
+    apps.getApplication.mockResolvedValue(detail('a'));
+    await s.loadDetail('a');
+    const answer = deferred<ApplicationSummary | null>();
+    apps.updateApplication.mockReturnValue(answer.promise);
+    const p = s.patchApplication('a', { recruiter_email: 'sam@globex.com' });
+    expect(apps.updateApplication).toHaveBeenCalledWith('a', { recruiter_email: 'sam@globex.com' });
+    expect(s.details.a.recruiter_email).toBe('sam@globex.com');
+    expect(s.items[0].recruiter_email).toBe('sam@globex.com');
+    answer.resolve(summary('a', { recruiter_email: 'sam@globex.com' }));
+    expect(await p).toBe('');
+    expect(s.details.a.recruiter_email).toBe('sam@globex.com');
+  });
+
+  it('goes back to the saved address and returns a message when saving fails', async () => {
+    const s = await loaded([summary('a', { recruiter_email: 'old@globex.com' })]);
+    apps.getApplication.mockResolvedValue(detail('a', { recruiter_email: 'old@globex.com' }));
+    await s.loadDetail('a');
+    apps.updateApplication.mockRejectedValue(new Error('API 422: {"detail":[{"loc":["body","recruiter_email"]}]}'));
+    const message = await s.patchApplication('a', { recruiter_email: 'new@globex.com' });
+    expect(message).not.toBe('');
+    expect(s.details.a.recruiter_email).toBe('old@globex.com');
+    expect(s.items[0].recruiter_email).toBe('old@globex.com');
+  });
+
+  it('can clear the address (null)', async () => {
+    const s = await withDetail({ recruiter_email: 'old@globex.com' });
+    apps.updateApplication.mockResolvedValue(summary('a', { recruiter_email: null }));
+    expect(await s.patchApplication('a', { recruiter_email: null })).toBe('');
+    expect(s.details.a.recruiter_email).toBeNull();
+  });
+
+  it('a failed address save does not undo a status change made later', async () => {
+    const s = await withDetail();
+    const first = deferred<ApplicationSummary | null>();
+    const second = deferred<ApplicationSummary | null>();
+    apps.updateApplication.mockReturnValueOnce(first.promise).mockReturnValueOnce(second.promise);
+    const p1 = s.patchApplication('a', { recruiter_email: 'sam@globex.com' });
+    const p2 = s.patchApplication('a', { status: 'applied' });
+    first.reject(new Error('API 500: x'));
+    expect(await p1).not.toBe('');
+    expect(s.details.a.status).toBe('applied');
+    second.resolve(summary('a', { status: 'applied', recruiter_email: null }));
+    await p2;
+    expect(s.details.a.status).toBe('applied');
   });
 });
 
