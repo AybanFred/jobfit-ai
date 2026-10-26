@@ -356,6 +356,20 @@ def test_export_damaged_content_is_422(db, content):
     assert db.storage.files == {}
 
 
+def test_export_rejects_the_application_email(db):
+    ids = add_app(db)
+    email_id = str(uuid.uuid4())
+    db.tables["generated_docs"].append({
+        "id": email_id, "user_id": USER, "job_post_id": ids.job_id, "type": "email",
+        "content": {"subject": "Application", "body": "Dear Hiring Manager,"},
+        "created_at": "2026-03-01T00:00:00+00:00"})
+    for fmt in ("pdf", "docx"):
+        r = _export(email_id, fmt)
+        assert r.status_code == 422
+        assert r.json() == {"detail": "Only resumes and cover letters can be downloaded."}
+    assert db.storage.files == {} and db.storage.signed == [] and db.logged == []
+
+
 @pytest.mark.parametrize("failure", ["fail_upload", "fail_sign"])
 def test_export_storage_failure_is_clean_500(db, failure):
     ids = add_app(db)

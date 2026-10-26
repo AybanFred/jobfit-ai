@@ -43,9 +43,9 @@ LETTER = {
     "closing": "Sincerely,", "signature": "Jane Doe",
 }
 
-SUMMARY_KEYS = {"id", "status", "applied_at", "follow_up_at", "notes", "created_at",
-                "updated_at", "job", "match", "documents"}
-DETAIL_KEYS = SUMMARY_KEYS | {"resume", "cover_letter", "source_resume"}
+SUMMARY_KEYS = {"id", "status", "applied_at", "follow_up_at", "notes", "recruiter_email",
+                "created_at", "updated_at", "job", "match", "documents"}
+DETAIL_KEYS = SUMMARY_KEYS | {"resume", "cover_letter", "email", "source_resume"}
 
 
 def _settings() -> Settings:

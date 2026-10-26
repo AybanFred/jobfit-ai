@@ -10,6 +10,7 @@ from fastapi.testclient import TestClient
 from app.core.config import Settings, get_settings
 from app.main import app
 from app.services import tailor, tailor_validator
+from app.services.applications import clean_recruiter_email
 from tests.fake_supabase import FakeSupabase
 
 SECRET = "test-secret-at-least-32-characters-long"
@@ -78,7 +79,20 @@ def good_tailor() -> dict:
                            "Thank you for your time."],
             "closing": "Sincerely,", "signature": "Jane Doe",
         },
+        "email": {"subject": GOOD_SUBJECT, "body": GOOD_EMAIL_BODY},
     }
+
+
+GOOD_SUBJECT = "Application for Backend Engineer – Jane Doe"
+GOOD_EMAIL_BODY = (
+    "Dear Ms. Laura Smith,\n\n"
+    "I am writing to apply for the Backend Engineer role at Globex Inc. Please find my "
+    "resume and cover letter attached.\n\n"
+    "At Acme Corp I built REST APIs with Python and FastAPI serving 2,000 users and "
+    "maintained PostgreSQL databases.\n\n"
+    "Thank you for your time and consideration.\n\n"
+    "Kind regards,\nJane Doe\njane.doe@example.com\n+1 (555) 123-4567"
+)
 
 
 def _settings(groq: str = "gsk-test-groq-key", gemini: str = "") -> Settings:
@@ -163,7 +177,8 @@ def test_tailor_from_resume_happy_path(env):
     assert r.status_code == 201, r.text
     body = r.json()
     assert set(body) == {"application_id", "job", "template", "model", "resume",
-                         "cover_letter", "match", "warnings"}
+                         "cover_letter", "email", "match", "warnings"}
+    assert body["email"] == {"subject": GOOD_SUBJECT, "body": GOOD_EMAIL_BODY}
     assert body["template"] == "harvard"
     assert body["model"] == "groq:llama-3.3-70b-versatile"
     assert body["warnings"] == []
@@ -204,16 +219,19 @@ def test_tailor_saves_everything_for_this_user(env):
     assert job["raw_text"] == JOB_TEXT.strip() and job["parsed"]["required_skills"]
 
     docs = db.rows("generated_docs")
-    assert sorted(d["type"] for d in docs) == ["cover_letter", "resume"]
+    assert sorted(d["type"] for d in docs) == ["cover_letter", "email", "resume"]
     for doc in docs:
         assert doc["user_id"] == "user-123" and doc["job_post_id"] == job["id"]
         assert doc["template"] == "harvard"
         assert doc["model"] == "groq:llama-3.3-70b-versatile"
         assert doc["source_resume_id"] == env.resume_id
         assert isinstance(doc["duration_ms"], int)
+    assert len({d["duration_ms"] for d in docs}) == 1  # one AI call wrote all three
     by_type = {d["type"]: d["content"] for d in docs}
     assert by_type["resume"] == body["resume"]
     assert by_type["cover_letter"] == body["cover_letter"]
+    assert by_type["email"] == body["email"] == {"subject": GOOD_SUBJECT,
+                                                 "body": GOOD_EMAIL_BODY}
 
     [match] = db.rows("match_results")
     assert match["score"] == 66.7 and match["gaps"] == ["Kubernetes", "Docker"]
@@ -647,3 +665,319 @@ def test_typed_details_cannot_break_out_of_their_tag(env):
 def test_too_long_title_or_company_is_422(env):
     assert _post(_body(env, job_title="x" * 201)).status_code == 422
     assert _post(_body(env, company="x" * 201)).status_code == 422
+
+
+# ---- recruiter email address ---------------------------------------------------
+
+RECRUITER = "laura.smith@globex.example"
+
+
+def long_address(length: int) -> str:
+    """A well-formed address of exactly `length` characters (254..256)."""
+    return "l" * 64 + "@" + "a" * 63 + "." + "b" * 63 + "." + "c" * (length - 197) + ".com"
+
+
+def test_tailor_saves_recruiter_email_and_the_email_doc(env):
+    r = _post(_body(env, recruiter_email=f"  {RECRUITER}  "))
+    assert r.status_code == 201, r.text
+    [application] = env.db.rows("applications")
+    assert application["recruiter_email"] == RECRUITER
+    [email_doc] = [d for d in env.db.rows("generated_docs") if d["type"] == "email"]
+    assert email_doc["content"] == r.json()["email"]
+    meta = env.logged[0][1]["metadata"]
+    assert meta["has_recruiter_email"] is True and meta["has_email"] is True
+
+
+def test_recruiter_email_never_reaches_the_ai_or_the_logs(env):
+    secret = "recruiter.secret+jobs@globex-hiring.example"
+    r = _post(_body(env, recruiter_email=secret))
+    assert r.status_code == 201
+    assert len(env.job_ai.calls) == 1 and len(env.ai.calls) == 1
+    for call in env.job_ai.calls + env.ai.calls:
+        for part in (call["system"], call["user"]):
+            assert secret not in part and "globex-hiring" not in part
+    assert "globex-hiring" not in str(env.logged)
+    assert "globex-hiring" not in str(r.json()["email"])
+
+
+@pytest.mark.parametrize("value", ["   ", "", None], ids=["spaces", "empty", "null"])
+def test_blank_recruiter_email_becomes_null(env, value):
+    r = _post(_body(env, recruiter_email=value))
+    assert r.status_code == 201, r.text
+    assert env.db.rows("applications")[0]["recruiter_email"] is None
+    assert env.logged[0][1]["metadata"]["has_recruiter_email"] is False
+
+
+@pytest.mark.parametrize("value", [
+    "not-an-email", "jane@globex", "jane doe@globex.com", "jane@@globex.com", "@globex.com",
+    "jane@", "jane@globex..com", ".jane@globex.com", "jane.@globex.com", "ja..ne@globex.com",
+    "jane@-globex.com", "jane@globex.c0m", "jane@globex.com,bob@globex.com",
+    "jané@globex.com", "l" * 65 + "@globex.com", long_address(255), 12345,
+], ids=["no-at", "no-tld", "space", "double-at", "no-local", "no-domain", "double-dot-domain",
+        "leading-dot", "trailing-dot", "double-dot-local", "hyphen-label", "digit-tld",
+        "two-addresses", "non-ascii", "long-local", "255-chars", "number"])
+def test_invalid_recruiter_email_is_422(env, value):
+    r = _post(_body(env, recruiter_email=value))
+    assert r.status_code == 422
+    assert env.job_ai.calls == [] and env.ai.calls == []
+    assert env.db.rows("job_posts") == []
+
+
+@pytest.mark.parametrize("value", [
+    "jane.doe@globex.com", "J.O'Neil+jobs@mail.globex.co.uk", "HR@Globex.COM", "a@b.io",
+    "hr@xn--80ak6aa92e.xn--p1ai", long_address(254),
+], ids=["plain", "plus-and-subdomains", "upper-case", "short", "punycode", "254-chars"])
+def test_valid_recruiter_emails_are_accepted(value):
+    assert clean_recruiter_email(f" {value} ") == value
+
+
+def test_recruiter_email_errors_are_clear():
+    assert clean_recruiter_email("   ") is None and clean_recruiter_email(None) is None
+    with pytest.raises(ValueError, match="at most 254"):
+        clean_recruiter_email(long_address(255))
+    with pytest.raises(ValueError, match="not a valid email address"):
+        clean_recruiter_email("jane@globex")
+
+
+# ---- application email: tailoring --------------------------------------------
+
+def test_prompt_asks_for_the_email_with_its_rules(env):
+    assert _post(_body(env)).status_code == 201
+    system = env.ai.calls[0]["system"]
+    assert '"email": {"subject": string, "body": string}' in system
+    for rule in ("at most 90 characters", "120 to 180 words", 'exactly "Dear Hiring Manager,"',
+                 "resume and cover letter are attached", 'Never mention the "missing" skills'):
+        assert rule in system
+    assert "Kubernetes" not in system
+
+
+def test_tailor_email_is_checked_and_its_warnings_are_saved(env):
+    env.ai.output["email"] = {
+        "subject": "**Application** for Backend Engineer",
+        "body": "Dear John Brown,\n\nI run Kubernetes clusters every day.\n\nKind regards,\nJane Doe",
+    }
+    r = _post(_body(env))
+    assert r.status_code == 201, r.text
+    body = r.json()
+    assert body["email"]["subject"] == "Application for Backend Engineer"
+    assert body["email"]["body"].startswith("Dear Hiring Manager,\n\nI run Kubernetes")
+    assert tailor_validator.EMAIL_GREETING_WARNING in body["warnings"]
+    assert ("The email mentions Kubernetes, which is not in your resume. "
+            "Please edit it before sending.") in body["warnings"]
+    [match] = env.db.rows("match_results")
+    assert match["warnings"] == body["warnings"]
+    [email_doc] = [d for d in env.db.rows("generated_docs") if d["type"] == "email"]
+    assert email_doc["content"] == body["email"]
+
+
+def test_tailor_without_an_email_returns_null_and_a_warning(env):
+    del env.ai.output["email"]
+    r = _post(_body(env))
+    assert r.status_code == 201, r.text
+    body = r.json()
+    assert body["email"] is None
+    assert body["warnings"] == ["The email is empty. Use “Write a new version” in the Tracker."]
+    assert sorted(d["type"] for d in env.db.rows("generated_docs")) == ["cover_letter", "resume"]
+    assert env.logged[0][1]["metadata"]["has_email"] is False
+
+
+def test_write_email_false_leaves_the_email_out_completely(env):
+    # The fake model still sends an "email" key: it must be ignored, not saved.
+    assert "email" in env.ai.output
+    r = _post(_body(env, write_email=False, recruiter_email=RECRUITER))
+    assert r.status_code == 201, r.text
+    body = r.json()
+    assert body["email"] is None
+    assert body["warnings"] == []  # no "The email is empty" warning
+    [call] = env.ai.calls
+    assert call["system"] == tailor.SYSTEM_PROMPT_NO_EMAIL
+    for text in (call["system"], call["user"]):
+        assert "application email" not in text.lower()
+        assert '"email": {"subject"' not in text
+    for email_rule in ("Application email", "120 to 180 words", "at most 90 characters",
+                       "resume and cover letter are attached", "or the email"):
+        assert email_rule not in call["system"]
+    assert "Tailor the source resume to the job and write the cover letter. " in call["user"]
+    assert sorted(d["type"] for d in env.db.rows("generated_docs")) == ["cover_letter", "resume"]
+    assert env.db.rows("applications")[0]["recruiter_email"] == RECRUITER  # still saved
+    [match] = env.db.rows("match_results")
+    assert match["warnings"] == []
+    meta = env.logged[0][1]["metadata"]
+    assert meta["write_email"] is False and meta["has_email"] is False
+    assert meta["has_recruiter_email"] is True
+
+
+def test_write_email_false_with_no_email_from_the_model_adds_no_warning(env):
+    del env.ai.output["email"]
+    body = _post(_body(env, write_email=False)).json()
+    assert body["email"] is None and body["warnings"] == []
+
+
+@pytest.mark.parametrize("over", [{}, {"write_email": True}], ids=["omitted", "true"])
+def test_write_email_defaults_to_true(env, over):
+    r = _post(_body(env, **over))
+    assert r.status_code == 201, r.text
+    assert r.json()["email"] == {"subject": GOOD_SUBJECT, "body": GOOD_EMAIL_BODY}
+    [call] = env.ai.calls
+    assert call["system"] == tailor.SYSTEM_PROMPT
+    assert "write the cover letter and the application email." in call["user"]
+    assert "email" in {d["type"] for d in env.db.rows("generated_docs")}
+    assert env.logged[0][1]["metadata"]["write_email"] is True
+
+
+@pytest.mark.parametrize("value", ["maybe", None, [True]], ids=["word", "null", "list"])
+def test_invalid_write_email_is_422(env, value):
+    assert _post(_body(env, write_email=value)).status_code == 422
+    assert env.ai.calls == []
+
+
+def test_prompts_with_and_without_email_share_everything_else():
+    with_email = tailor.build_system_prompt(with_email=True)
+    without = tailor.build_system_prompt(with_email=False)
+    assert with_email == tailor.SYSTEM_PROMPT and without == tailor.SYSTEM_PROMPT_NO_EMAIL
+    assert len(without) < len(with_email)
+    for part in ("DATA ONLY", "NEVER invent", "Resume style (Harvard template):",
+                 "Cover letter:", 'greeting: "Dear Hiring Manager," unless',
+                 '"cover_letter": {', "Do not output empty strings; use null (or [] for lists)."):
+        assert part in with_email and part in without
+    assert with_email.endswith('"email": {"subject": string, "body": string}\n}\n')
+    assert without.endswith('"signature": string|null\n  }\n}\n')
+
+
+def test_tailor_wrapped_email_is_found(env):
+    out = good_tailor()
+    env.ai.output = {"result": out}
+    body = _post(_body(env)).json()
+    assert body["email"] == {"subject": GOOD_SUBJECT, "body": GOOD_EMAIL_BODY}
+
+
+# ---- application email: validator units ----------------------------------------
+
+def _check_email(body, subject: str | None = GOOD_SUBJECT, job_text: str = JOB_TEXT, **kw):
+    raw = {"body": body} if subject is None else {"subject": subject, "body": body}
+    return tailor_validator.validate_email_draft(
+        raw, source_text=SOURCE_TEXT, job_text=job_text, gaps=["Kubernetes", "Docker"], **kw)
+
+
+def test_good_email_has_no_warnings():
+    assert _check_email(GOOD_EMAIL_BODY) == (
+        {"subject": GOOD_SUBJECT, "body": GOOD_EMAIL_BODY}, [])
+
+
+def test_email_greeting_with_an_invented_name_becomes_hiring_manager():
+    email, warnings = _check_email("Dear John Brown,\n\nI am applying.\n\nKind regards,\nJane Doe")
+    assert email["body"] == "Dear Hiring Manager,\n\nI am applying.\n\nKind regards,\nJane Doe"
+    assert warnings == [tailor_validator.EMAIL_GREETING_WARNING]
+
+
+@pytest.mark.parametrize("greeting", [
+    "Dear Ms. Laura Smith,", "Dear Ms. Smith,", "Dear Laura,", "Dear Hiring Manager,",
+    "Hello,", "Dear Globex Inc Hiring Team,", "Dear Hiring Team at Globex Inc,", "Hi there,",
+    "Dear Sir or Madam,",
+], ids=["full-name", "honorific", "first-name", "default", "hello", "company-team",
+        "team-at-company", "hi-there", "sir-madam"])
+def test_safe_email_greetings_are_kept(greeting):
+    email, warnings = _check_email(f"{greeting}\n\nI am applying.")
+    assert email["body"].startswith(f"{greeting}\n\nI am applying.") and warnings == []
+
+
+def test_email_greeting_for_the_typed_company_team_is_kept():
+    email, warnings = _check_email("Dear Globex Portugal Team,\n\nHi.", company="Globex Portugal")
+    assert email["body"].startswith("Dear Globex Portugal Team,") and warnings == []
+
+
+def test_email_greeting_on_the_same_line_keeps_the_sentence():
+    email, warnings = _check_email("Dear Mr. Brown, I am applying for the role.")
+    assert email["body"] == "Dear Hiring Manager, I am applying for the role."
+    assert warnings == [tailor_validator.EMAIL_GREETING_WARNING]
+
+
+def test_email_gap_skill_and_unknown_numbers_are_warned_but_kept():
+    email, warnings = _check_email(
+        "Dear Hiring Manager,\n\nI have 10 years of Kubernetes experience and cut costs by 40%.")
+    assert "Kubernetes" in email["body"]  # kept: the user decides
+    assert warnings == [
+        "The email mentions Kubernetes, which is not in your resume. Please edit it before sending.",
+        "The email has a number that is not in your resume or the job post (10, 40). "
+        "Please check it.",
+    ]
+
+
+def test_email_numbers_from_the_job_post_and_phone_formats_are_fine():
+    job = JOB_TEXT + "Reference: REQ-4711.\n"
+    _, warnings = _check_email(
+        "Dear Hiring Manager,\n\nRe REQ-4711: I built REST APIs for 2,000 users.\n\n"
+        "Jane Doe\n+15551234567", job_text=job, company="3M Globex")
+    assert warnings == []
+    _, warnings = _check_email("Dear Hiring Manager,\n\nI admire 3M.", company="3M Globex")
+    assert warnings == []  # a number in the typed company is not invented
+
+
+def test_email_with_an_unknown_email_address_is_warned():
+    _, warnings = _check_email("Dear Hiring Manager,\n\nThanks.\n\nJane Doe\njane@gmail.com")
+    assert warnings == [tailor_validator.EMAIL_CONTACT_WARNING]
+
+
+def test_email_markdown_is_stripped():
+    email, warnings = _check_email(
+        "Dear Hiring Manager,\n\n**I am applying** for the _Backend Engineer_ role. "
+        "See `JobFit AI`.\n\n* Built REST APIs\n* Maintained PostgreSQL databases\n\n---\n"
+        "[GitHub](https://github.com/janedoe)\n\n> Kind regards,\n> Jane Doe",
+        subject="**Subject:** Application for *Backend Engineer*")
+    assert email == {
+        "subject": "Application for Backend Engineer",
+        "body": "Dear Hiring Manager,\n\nI am applying for the Backend Engineer role. See JobFit AI."
+                "\n\n- Built REST APIs\n- Maintained PostgreSQL databases\n\n"
+                "GitHub (https://github.com/janedoe)\n\nKind regards,\nJane Doe",
+    }
+    assert warnings == []
+
+
+def test_email_whitespace_is_tidied_and_a_repeated_subject_line_is_removed():
+    email, _ = _check_email(["Subject: Application", "Dear Hiring Manager,",
+                             "I am   applying.\r\n\r\n\r\nThanks.  "])
+    assert email["body"] == "Dear Hiring Manager,\n\nI am applying.\n\nThanks."
+
+
+def test_email_lengths_are_capped():
+    email, _ = _check_email("Dear Hiring Manager,\n\n" + "word " * 1000,
+                            subject="Application " * 30)
+    assert len(email["subject"]) <= tailor_validator.SUBJECT_MAX == 150
+    assert len(email["body"]) <= tailor_validator.EMAIL_BODY_MAX == 3000
+    assert email["body"].endswith("word")  # cut at a word boundary
+
+
+def test_missing_subject_gets_a_default():
+    email, _ = _check_email("Dear Hiring Manager,\n\nHi.", subject=None,
+                            title="Backend Engineer", candidate_name="Jane Doe")
+    assert email["subject"] == "Application for Backend Engineer – Jane Doe"
+    email, _ = _check_email("Dear Hiring Manager,\n\nHi.", subject="  ** **  ")
+    assert email["subject"] == "Job application"
+
+
+@pytest.mark.parametrize("raw", [
+    {}, None, "text", {"subject": "Hi", "body": "   "}, {"subject": "Hi", "body": "** **"},
+    {"subject": "Hi", "body": None}, {"subject": "Hi", "body": ["", None]},
+], ids=["empty", "null", "string", "blank-body", "symbols", "null-body", "empty-list"])
+def test_empty_email_is_a_warning_not_an_error(raw):
+    email, warnings = tailor_validator.validate_email_draft(
+        raw, source_text=SOURCE_TEXT, job_text=JOB_TEXT, gaps=[])
+    assert email is None
+    assert warnings == ["The email is empty. Use “Write a new version” in the Tracker."]
+
+
+@pytest.mark.parametrize("raw,expected", [
+    ({"email": {"subject": "S", "body": "B"}}, {"subject": "S", "body": "B"}),
+    ({"result": {"resume": {}, "email": {"subject": "S", "body": "B"}}},
+     {"subject": "S", "body": "B"}),
+    ({"subject": "S", "body": "B"}, {"subject": "S", "body": "B"}),
+    ({"answer": {"subject": "S", "body": "B"}}, {"subject": "S", "body": "B"}),
+    ({"email": "Dear Hiring Manager, hello."}, {"body": "Dear Hiring Manager, hello."}),
+    ({"email": "jane.doe@example.com"}, {}),
+    ({"resume": {"header": {"email": "jane.doe@example.com"}},
+      "cover_letter": {"body": "The cover letter text."}}, {}),
+    ("not an object", {}),
+], ids=["plain", "wrapped", "flat", "flat-wrapped", "string-body", "address-only",
+        "never-the-letter", "not-a-dict"])
+def test_split_email_finds_the_email_object(raw, expected):
+    assert tailor_validator.split_email(raw) == expected

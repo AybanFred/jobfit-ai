@@ -11,6 +11,7 @@ from app.core.config import Settings, get_settings
 from app.db.supabase_client import log_activity
 from app.services import tailor as tailor_service
 from app.services.ai_providers import resolve_model
+from app.services.applications import clean_recruiter_email
 
 router = APIRouter(prefix="/tailor", tags=["tailor"])
 
@@ -24,6 +25,10 @@ class TailorIn(BaseModel):
                                                  pattern=r"^https?://\S+$")] | None = None
     job_title: Short | None = None  # typed by the user; wins over the AI-detected title
     company: Short | None = None    # typed by the user; wins over the AI-detected company
+    # Saved on the application only; never sent to the AI, never logged.
+    recruiter_email: str | None = None
+    # false = do not ask the AI for the application email at all (email is null).
+    write_email: bool = True
     source: Literal["resume", "profile"]
     resume_id: UUID | None = None  # required when source = "resume"
     template: Literal["harvard"] = "harvard"
@@ -33,6 +38,11 @@ class TailorIn(BaseModel):
     @classmethod
     def _blank_is_none(cls, value):
         return None if isinstance(value, str) and not value.strip() else value
+
+    @field_validator("recruiter_email")
+    @classmethod
+    def _valid_recruiter_email(cls, value: str | None) -> str | None:
+        return clean_recruiter_email(value)  # trimmed; blank -> None; 422 if invalid
 
     @model_validator(mode="after")
     def _resume_needs_id(self):
@@ -99,6 +109,12 @@ class CoverLetter(BaseModel):
     signature: str | None = None
 
 
+class EmailDraft(BaseModel):
+    """The application email: plain text, paragraphs separated by a blank line."""
+    subject: str
+    body: str
+
+
 class MatchOut(BaseModel):
     score: float  # 0..100, one decimal
     matched: list[str] = []
@@ -112,6 +128,8 @@ class TailorOut(BaseModel):
     model: str  # "<provider>:<model>"
     resume: TailoredResume
     cover_letter: CoverLetter
+    # null when write_email was false, or when the model wrote no usable email (see warnings)
+    email: EmailDraft | None = None
     match: MatchOut
     warnings: list[str] = []
 
@@ -124,8 +142,9 @@ def tailor(
     user: CurrentUser = Depends(get_current_user),
     settings: Settings = Depends(get_settings),
 ):
-    """Tailor a resume + cover letter from the user's ORIGINAL resume (an uploaded
-    resume or the Master Profile), save everything and add a tracker entry.
+    """Tailor a resume + cover letter + application email from the user's ORIGINAL
+    resume (an uploaded resume or the Master Profile), save everything and add a
+    tracker entry (with the optional recruiter email address).
 
     The AI may only rephrase, reorder and highlight real data; anything it invents is
     removed and reported in `warnings`. Job skills not in the source are `match.gaps`.
@@ -136,6 +155,7 @@ def tailor(
         resume_id=str(body.resume_id) if body.resume_id else None, template=body.template,
         settings=settings, model_id=f"{provider}:{model}",
         job_title=body.job_title, company=body.company,
+        recruiter_email=body.recruiter_email, write_email=body.write_email,
     )  # 404 / 422 / 429 / 500 / 502
 
     resume, match = result["resume"], result["match"]
@@ -154,6 +174,9 @@ def tailor(
                      "projects": len(resume["projects"]),
                      "skills": sum(len(g["items"]) for g in resume["skills"]),
                      "paragraphs": len(result["cover_letter"]["paragraphs"]),
+                     "write_email": body.write_email,
+                     "has_email": result["email"] is not None,
+                     "has_recruiter_email": body.recruiter_email is not None,  # never the address
                      "warnings": len(result["warnings"]),
                      "duration_ms": result["duration_ms"],
                  })
@@ -164,6 +187,7 @@ def tailor(
         model=result["model"],
         resume=TailoredResume(**resume),
         cover_letter=CoverLetter(**result["cover_letter"]),
+        email=EmailDraft(**result["email"]) if result["email"] else None,
         match=MatchOut(**match),
         warnings=result["warnings"],
     )

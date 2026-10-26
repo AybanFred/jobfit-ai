@@ -12,6 +12,12 @@ After the model answers, `validate` checks every part against the source:
   - WARNED (kept, the user must check it): bullets with a number or percentage
     that is not in the source, and a cover letter that mentions a gap skill.
 
+`validate_email_draft` checks the short application email ({subject, body}):
+markdown is stripped and lengths capped; a greeting naming a person who is not
+in the job text becomes "Dear Hiring Manager,"; gap skills, numbers and email
+addresses that are not in the source (or job text) are WARNED. An empty email is
+a warning, not an error. Every email warning starts with "The email".
+
 Matching is the same word-boundary matcher as resume import and job parsing
 (`_Source.has_text`), so "Go" never matches inside "Google".
 
@@ -520,3 +526,195 @@ def validate(raw, *, source_text: str, job_text: str, gaps: list[str],
 
 def resume_is_empty(resume: dict) -> bool:
     return not any(resume.get(k) for k in ("education", "experience", "projects", "skills"))
+
+
+# ---------------------------------------------------------------------------
+# Application email
+# ---------------------------------------------------------------------------
+
+SUBJECT_MAX = 150
+EMAIL_BODY_MAX = 3000
+EMAIL_WARNING_PREFIX = "The email"  # every email warning starts with this
+EMAIL_EMPTY_WARNING = "The email is empty. Use “Write a new version” in the Tracker."
+EMAIL_GREETING_WARNING = ("The email greeting named someone who is not in the job post, "
+                          "so it now says “Dear Hiring Manager,”.")
+EMAIL_CONTACT_WARNING = ("The email has an email address that is not in your resume. "
+                         "Please check it.")
+
+_EMAIL_KEYS = ("email", "application_email", "applicationEmail")
+_CONTROL_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
+_MD_FENCE_RE = re.compile(r"^\s*```.*$", re.MULTILINE)
+_MD_HEADING_RE = re.compile(r"^[ \t]{0,3}#{1,6}[ \t]+", re.MULTILINE)
+_MD_QUOTE_RE = re.compile(r"^[ \t]*>[ \t]?", re.MULTILINE)
+_MD_RULE_RE = re.compile(r"^[ \t]*(?:[-*_][ \t]*){3,}$", re.MULTILINE)
+_MD_BULLET_RE = re.compile(r"^[ \t]*[*+•·▪●][ \t]+", re.MULTILINE)
+_MD_LINK_RE = re.compile(r"\[([^\]\n]+)\]\(([^)\s]+)\)")
+_MD_BOLD_RE = re.compile(r"(\*\*|__)(?=\S)(.+?)(?<=\S)\1")
+_MD_STAR_RE = re.compile(r"(?<![\w*])\*(?=\S)([^*\n]+?)(?<=\S)\*(?![\w*])")
+_MD_UNDERSCORE_RE = re.compile(r"(?<![\w_])_(?=\S)([^_\n]+?)(?<=\S)_(?![\w_])")
+_MD_CODE_RE = re.compile(r"`([^`\n]*)`")
+_SUBJECT_PREFIX_RE = re.compile(r"^\s*(?:subject|re)\s*:\s*", re.IGNORECASE)
+_EMAIL_ADDRESS_RE = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
+_GREETING_RE = re.compile(
+    r"^(dear|hello|hi|hey|greetings|good (?:morning|afternoon|day))\b[ \t]*"
+    r"([^,:;!\n]*)([,:;!]?)(.*)$", re.IGNORECASE)
+_HONORIFIC_RE = re.compile(r"^(?:mr|mrs|ms|miss|mx|dr|prof|professor)\.?\s+", re.IGNORECASE)
+_GREETING_FILLER_RE = re.compile(r"^(?:at|of|from)\s+")
+_GENERIC_EMAIL_WHO = _GENERIC_WHO | {
+    "there", "all", "everyone", "hiring managers", "hiring committee", "recruiters",
+    "talent team", "talent acquisition team", "hr team", "human resources team"}
+
+
+def split_email(raw) -> dict:
+    """Find the email object in the model's JSON: {"email": {...}}, a wrapper such as
+    {"result": {"email": {...}}}, or a flat {"subject", "body"} answer."""
+    if not isinstance(raw, dict):
+        return {}
+    for candidate in (raw, *(v for v in raw.values() if isinstance(v, dict))):
+        value = _pick(candidate, *_EMAIL_KEYS)
+        if isinstance(value, dict):
+            return value
+        if candidate is raw and isinstance(value, str) and re.search(r"\s", value.strip()):
+            return {"body": value}  # the body alone (an address is not a body)
+    if any(k in raw for k in ("resume", "cover_letter")):
+        return {}  # never take the cover letter's "body" for the email
+    flat = [raw] + ([v for v in raw.values() if isinstance(v, dict)] if len(raw) == 1 else [])
+    return next((c for c in flat if "body" in c or "subject" in c), {})
+
+
+def strip_markdown(text: str) -> str:
+    """Plain text: no headings, bold/italic markers, code ticks, quotes or rules.
+    Links become "text (url)"; "*"/"•" list markers become "- "."""
+    text = _CONTROL_RE.sub("", text.replace("\r\n", "\n").replace("\r", "\n"))
+    text = _MD_FENCE_RE.sub("", text)
+    text = _MD_RULE_RE.sub("", text)
+    text = _MD_HEADING_RE.sub("", text)
+    text = _MD_QUOTE_RE.sub("", text)
+    text = _MD_BULLET_RE.sub("- ", text)
+    text = _MD_LINK_RE.sub(lambda m: m.group(2) if m.group(1).strip() == m.group(2)
+                           else f"{m.group(1)} ({m.group(2)})", text)
+    for _ in range(2):  # "***bold italic***"
+        text = _MD_BOLD_RE.sub(r"\2", text)
+    text = _MD_STAR_RE.sub(r"\1", text)
+    text = _MD_UNDERSCORE_RE.sub(r"\1", text)
+    return _MD_CODE_RE.sub(r"\1", text)
+
+
+def _cap(text: str, limit: int) -> str:
+    """Cut at a word boundary when possible."""
+    if len(text) <= limit:
+        return text
+    cut = text[:limit]
+    space = max(cut.rfind(" "), cut.rfind("\n"))
+    return (cut[:space] if space > limit * 0.8 else cut).rstrip()
+
+
+def _email_subject(value) -> str | None:
+    text = _scalar(value)
+    if not text:
+        return None
+    text = re.sub(r"\s+", " ", strip_markdown(text)).strip()
+    text = _SUBJECT_PREFIX_RE.sub("", text).strip(" \"'“”‘’")
+    if not re.search(r"\w", text):
+        return None  # only symbols left
+    return _cap(text, SUBJECT_MAX)
+
+
+def _email_body(value) -> str | None:
+    if isinstance(value, list):  # paragraphs as a list
+        value = "\n\n".join(v for v in (_scalar(x) for x in value) if v)
+    text = _scalar(value)
+    if not text:
+        return None
+    text = strip_markdown(text)
+    lines = [re.sub(r"[ \t]+", " ", line).strip() for line in text.split("\n")]
+    while lines and not lines[0]:
+        lines.pop(0)
+    if lines and _SUBJECT_PREFIX_RE.match(lines[0]) and lines[0].lower().startswith("subject"):
+        lines.pop(0)  # the subject repeated inside the body
+    paragraphs: list[str] = []
+    current: list[str] = []
+    for line in lines + [""]:
+        if line:
+            current.append(line)
+        elif current:
+            paragraphs.append("\n".join(current))
+            current = []
+    body = "\n\n".join(paragraphs)
+    if not re.search(r"\w", body):
+        return None  # only symbols left
+    return _cap(body, EMAIL_BODY_MAX)
+
+
+def default_subject(title: str | None, candidate_name: str | None) -> str:
+    head = f"Application for {title}" if title else "Job application"
+    return _cap(f"{head} – {candidate_name}" if candidate_name else head, SUBJECT_MAX)
+
+
+def _greeting_is_safe(who: str, ctx: _Ctx, company: str | None) -> bool:
+    """A generic greeting, or a person / team that is written in the job text."""
+    key = re.sub(r"^the\s+", "", _collapse(who))
+    if not key or key in _GENERIC_EMAIL_WHO:
+        return True
+    name = _HONORIFIC_RE.sub("", who).strip()
+    if ctx.job.has_text(who) or (name and ctx.job.has_text(name)):
+        return True
+    rest = key
+    for generic in sorted(_GENERIC_EMAIL_WHO, key=len, reverse=True):  # "Globex Hiring Team"
+        rest = re.sub(rf"(?<![a-z]){re.escape(generic)}(?![a-z])", " ", rest)
+    rest = _GREETING_FILLER_RE.sub("", re.sub(r"\s+", " ", rest).strip()).strip()
+    if rest == key:
+        return False  # no generic word at all: it names someone
+    return (not rest or ctx.job.has_text(rest)
+            or (company is not None and rest == _collapse(company)))
+
+
+def _check_greeting(body: str, ctx: _Ctx, company: str | None) -> str:
+    first, _, after = body.partition("\n")
+    found = _GREETING_RE.match(first)
+    if not found:
+        return body
+    who, punct, rest = found.group(2).strip(" ."), found.group(3), found.group(4).strip()
+    if not punct and len(first) > 60:
+        return body  # a sentence, not a greeting line
+    if _greeting_is_safe(who, ctx, company):
+        return body
+    ctx.warn(EMAIL_GREETING_WARNING)
+    line = DEFAULT_GREETING + (f" {rest}" if rest else "")
+    return f"{line}\n{after}" if after else line
+
+
+def validate_email_draft(raw, *, source_text: str, job_text: str, gaps: list[str],
+                         title: str | None = None, company: str | None = None,
+                         candidate_name: str | None = None) -> tuple[dict | None, list[str]]:
+    """Return ({subject, body} or None when empty, warnings).
+
+    `raw` is the email object from `split_email`. `title` / `company` are the job
+    details given to the model; `candidate_name` (already checked) is only used for a
+    missing subject.
+    """
+    e = raw if isinstance(raw, dict) else {}
+    ctx = _Ctx(source_text, job_text, gaps)
+    body = _email_body(_pick(e, "body", "text", "message", "content"))
+    if not body:
+        ctx.warn(EMAIL_EMPTY_WARNING)
+        return None, ctx.warnings
+    subject = _email_subject(_pick(e, "subject", "title")) or default_subject(title,
+                                                                             candidate_name)
+    body = _check_greeting(body, ctx, company)
+
+    text = f"{subject}\n{body}"
+    hits = mentioned(text, ctx.gaps)
+    if hits:
+        ctx.warn(f"The email mentions {_join(hits)}, which is not in your resume. "
+                 "Please edit it before sending.")
+    allowed = ctx.letter_numbers | _numbers(title or "") | _numbers(company or "")
+    extra = [n for n in ctx.unsupported_numbers(text, allowed)
+             if not (len(n) >= 7 and n.isdigit() and n in ctx.src.digits)]  # phone formats
+    if extra:
+        ctx.warn(f"The email has a number that is not in your resume or the job post "
+                 f"({_join(extra)}). Please check it.")
+    known = ctx.src.text + "\n" + ctx.job.text
+    if any(a.lower() not in known for a in _EMAIL_ADDRESS_RE.findall(body)):
+        ctx.warn(EMAIL_CONTACT_WARNING)
+    return {"subject": subject, "body": body}, ctx.warnings

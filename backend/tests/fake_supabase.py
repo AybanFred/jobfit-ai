@@ -13,7 +13,7 @@ from urllib.parse import quote
 _DEFAULTS = {
     "job_posts": {"title": None, "company": None, "source_url": None, "parsed": None},
     "applications": {"status": "saved", "applied_at": None, "follow_up_at": None,
-                     "notes": None},
+                     "notes": None, "recruiter_email": None},
     "match_results": {"matched": [], "gaps": [], "warnings": []},
     "generated_docs": {"template": None, "source_resume_id": None, "file_path": None,
                        "version": 1},

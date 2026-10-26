@@ -10,8 +10,14 @@ The list avoids N+1 queries: one query for the applications, then one each for
 their jobs, matches and documents (ids are sent in batches of `_IN_BATCH` to keep
 the request URL short, so up to 200 rows is at most 2 queries per table).
 
-Privacy: notes, job text and document content are never logged or printed.
+Documents of type "email" (the application email) are NOT listed in `documents`
+(that list is for the downloadable resume and cover letter); the detail returns
+the latest email separately.
+
+Privacy: notes, the recruiter email address, job text and document content are
+never logged or printed.
 """
+import re
 from datetime import datetime, timezone
 
 from fastapi import HTTPException, status
@@ -20,15 +26,18 @@ from app.db.supabase_client import get_admin_client
 from app.services.documents import remove_job_files
 
 STATUSES = ("saved", "applied", "interview", "offer", "rejected", "ghosted")
-DOC_TYPES = ("resume", "cover_letter")
+DOC_TYPES = ("resume", "cover_letter")  # listed in `documents` (the downloadable ones)
+EMAIL_DOC_TYPE = "email"
 MAX_LIST = 200
 MAX_DOCS_PER_JOB = 20
 NOTES_MAX = 2000
+RECRUITER_EMAIL_MAX = 254  # same limit as the check constraint in migration 0005
 _IN_BATCH = 100
 _DOCS_LIMIT = 1000  # Supabase caps a response at 1000 rows by default
 _SHORT_MAX = 200
 
-_APP_COLUMNS = "id, job_post_id, status, applied_at, follow_up_at, notes, created_at, updated_at"
+_APP_COLUMNS = ("id, job_post_id, status, applied_at, follow_up_at, notes, recruiter_email, "
+                "created_at, updated_at")
 _JOB_LIST_COLUMNS = "id, title, company, source_url, created_at, location:parsed->>location"
 _JOB_DETAIL_COLUMNS = "id, title, company, source_url, parsed, raw_text, created_at"
 _MATCH_LIST_COLUMNS = "job_post_id, score, gaps, created_at"
@@ -36,6 +45,43 @@ _MATCH_DETAIL_COLUMNS = "job_post_id, score, matched, gaps, warnings, created_at
 _DOC_LIST_COLUMNS = "id, job_post_id, type, template, version, created_at"
 _DOC_DETAIL_COLUMNS = ("id, job_post_id, type, template, version, created_at, content, "
                        "source_resume_id")
+_EMAIL_COLUMNS = "id, job_post_id, created_at, content"
+
+# A practical email address check (the `email-validator` package is not installed):
+# ASCII local part without leading/trailing/double dots, a domain of valid labels and
+# a top-level domain of letters (or punycode).
+_LOCAL_RE = re.compile(r"^[A-Za-z0-9!#$%&'*+/=?^_`{|}~-]+(?:\.[A-Za-z0-9!#$%&'*+/=?^_`{|}~-]+)*$")
+_LABEL_RE = re.compile(r"^[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$")
+_TLD_RE = re.compile(r"^(?:[A-Za-z]{2,63}|xn--[A-Za-z0-9-]{1,59})$")
+
+
+# ---------------------------------------------------------------------------
+# Recruiter email address (shared by POST /tailor and PATCH /applications/{id})
+# ---------------------------------------------------------------------------
+
+def is_email_address(value: str) -> bool:
+    if not value or len(value) > RECRUITER_EMAIL_MAX or value.count("@") != 1:
+        return False
+    local, domain = value.split("@")
+    labels = domain.split(".")
+    return (len(local) <= 64 and _LOCAL_RE.match(local) is not None
+            and len(labels) >= 2 and all(_LABEL_RE.match(label) for label in labels)
+            and _TLD_RE.match(labels[-1]) is not None)
+
+
+def clean_recruiter_email(value: str | None) -> str | None:
+    """Trim; blank -> None; otherwise it must be a valid address of at most 254
+    characters. Raises ValueError (a 422 in the request models)."""
+    if value is None:
+        return None
+    value = value.strip()
+    if not value:
+        return None
+    if len(value) > RECRUITER_EMAIL_MAX:
+        raise ValueError(f"The recruiter email can be at most {RECRUITER_EMAIL_MAX} characters")
+    if not is_email_address(value):
+        raise ValueError("The recruiter email is not a valid email address")
+    return value
 
 
 # ---------------------------------------------------------------------------
@@ -96,7 +142,10 @@ def _by_ids(db, table: str, columns: str, id_column: str, user_id: str,
                  .in_(id_column, ids[start:start + _IN_BATCH])
                  .order("created_at", desc=True))
         if table == "generated_docs":
-            query = query.order("version", desc=True).limit(_DOCS_LIMIT)
+            # Only resume / cover letter: many rewritten emails must not push them
+            # out of the row limit.
+            query = (query.in_("type", list(DOC_TYPES)).order("version", desc=True)
+                     .limit(_DOCS_LIMIT))
         rows += _rows(query.execute())
     return rows
 
@@ -125,6 +174,7 @@ def _summary(app: dict, job: dict, match: dict | None, docs: dict[str, dict]) ->
         "applied_at": app.get("applied_at"),
         "follow_up_at": app.get("follow_up_at"),
         "notes": app.get("notes"),
+        "recruiter_email": app.get("recruiter_email"),
         "created_at": app.get("created_at"),
         "updated_at": app.get("updated_at") or app.get("created_at"),
         "job": {
@@ -195,8 +245,16 @@ def list_applications(user_id: str, status_filter: str | None = None) -> list[di
         raise _failed("load your applications", exc) from exc
 
 
+def latest_email(db, user_id: str, job_id: str) -> dict | None:
+    """The newest application email of one job (older versions are kept)."""
+    return _one(db.table("generated_docs").select(_EMAIL_COLUMNS)
+                .eq("job_post_id", job_id).eq("user_id", user_id)
+                .eq("type", EMAIL_DOC_TYPE).order("created_at", desc=True))
+
+
 def get_application(user_id: str, application_id: str) -> dict:
-    """One application with its job, full match, latest documents and source resume.
+    """One application with its job, full match, latest documents, latest email and
+    source resume.
 
     Document content and parsed job JSON are returned as stored; the route turns
     anything malformed into null.
@@ -215,8 +273,10 @@ def get_application(user_id: str, application_id: str) -> dict:
         docs = _latest_docs(_rows(
             db.table("generated_docs").select(_DOC_DETAIL_COLUMNS)
             .eq("job_post_id", job_id).eq("user_id", user_id)
+            .in_("type", list(DOC_TYPES))
             .order("created_at", desc=True).order("version", desc=True)
             .limit(MAX_DOCS_PER_JOB).execute())).get(job_id, {})
+        email = latest_email(db, user_id, job_id)
         resume_doc, letter_doc = docs.get("resume"), docs.get("cover_letter")
         source_id = ((resume_doc or {}).get("source_resume_id")
                      or (letter_doc or {}).get("source_resume_id"))
@@ -242,6 +302,7 @@ def get_application(user_id: str, application_id: str) -> dict:
         },
         "resume": _doc_with_content(resume_doc),
         "cover_letter": _doc_with_content(letter_doc),
+        "email": _doc_with_content(email),
         "source_resume": None if source is None else {
             "id": source["id"], "file_name": source.get("file_name") or "Resume",
         },

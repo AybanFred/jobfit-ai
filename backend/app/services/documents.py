@@ -23,6 +23,7 @@ SIGNED_URL_SECONDS = 600
 _LIST_LIMIT = 1000
 
 _DAMAGED = "This document is empty or damaged and cannot be exported."
+_NOT_DOWNLOADABLE = "Only resumes and cover letters can be downloaded."
 
 
 def _failed(what: str, exc: Exception) -> HTTPException:
@@ -93,7 +94,9 @@ def export_document(user_id: str, doc_id: str, fmt: str, today: date | None = No
         raise _failed("export the document", exc) from exc
 
     doc_type, content = doc.get("type"), doc.get("content")
-    if doc_type not in export.DOC_TYPES or not isinstance(content, dict) or not content:
+    if doc_type not in export.DOC_TYPES:  # e.g. the application email
+        raise HTTPException(422, _NOT_DOWNLOADABLE)
+    if not isinstance(content, dict) or not content:
         raise HTTPException(422, _DAMAGED)
 
     try:
