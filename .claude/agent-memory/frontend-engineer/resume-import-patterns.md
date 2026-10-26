@@ -30,4 +30,4 @@ Decisions:
 Pitfalls:
 - Tests that import services touching `supabase.ts` must `vi.mock('@/services/supabase', ...)` (createClient throws without env vars).
 - Use `:checked` + `@update:checked`, not both `v-model:checked` and `:checked`.
-- `tests/unit/example.spec.ts` is a stale starter test that already fails (mounts Home with logo path). Not ours.
+- Saved resume files (POST/GET /resumes) for the Jobs screen live in `services/resumes.ts`; it reuses `validateResumeFile` and `ImportDropZone` from here.

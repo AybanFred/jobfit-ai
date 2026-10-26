@@ -17,6 +17,6 @@ Patterns:
 - Ionic `ion-input` errors: add classes `ion-invalid ion-touched` plus `error-text`.
 
 Pitfalls:
-- `tests/unit/example.spec.ts` is the stale Ionic starter test (expects "Ready to create an app?") and fails; not ours, nothing deleted.
+- `tests/unit/example.spec.ts` was replaced by a ComingSoon component test and passes now (old note about it failing is outdated).
 - No `export` of values from `<script setup>`; use a second plain `<script lang="ts">` for exported types.
 - Enter-to-submit: use a `<form @submit.prevent>` with an `ion-button type="submit"`; keep a `loading` guard.

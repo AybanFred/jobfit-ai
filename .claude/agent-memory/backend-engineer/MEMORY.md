@@ -1,2 +1,2 @@
-- [Backend conventions and pitfalls](backend_conventions.md) — test settings override, Anthropic mocking, resume import design notes
-- [Migrations and Storage conventions](project_migrations_storage.md) — numbering, private buckets, own-folder policies, avatars bucket, no docs/ yet
+- [Backend conventions and pitfalls](backend_conventions.md) — test settings override, AI mocking, tailoring guard, fake_supabase, tracker/export, reportlab pitfalls
+- [Migrations and Storage conventions](project_migrations_storage.md) — numbering (0001-0004), private buckets, own-folder policies, export paths, migrate-before-deploy

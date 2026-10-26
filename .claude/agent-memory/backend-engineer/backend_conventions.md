@@ -1,6 +1,6 @@
 ---
 name: backend-conventions-and-pitfalls
-description: Reusable backend/test conventions for JobFit AI (settings override in tests, multi-provider AI layer, resume import design)
+description: Reusable backend/test conventions for JobFit AI (settings override in tests, multi-provider AI layer, resume import, tailoring validator policy, shared Supabase fake)
 metadata:
   type: project
 ---
@@ -16,4 +16,16 @@ metadata:
 - Resume import (`POST /api/v1/profile/import-resume`): in-memory only, optional form field `model_id`, model resolved (400/503) BEFORE reading the file. Skill matching is word-boundary, not raw substring (so "Go" does not match "Google"). Skills of 1 character (C, R) are dropped by the 2..60 rule.
 - Starlette may spool uploads over ~1 MB to a temp file before the route runs; it is deleted automatically, our code never writes the file.
 - Bash tool heredocs break on triple quotes in Python source; write helper scripts with the Write tool instead (scratchpad dir).
+- Jobs (Phase 3 slice 1): `app/services/job_parser.py` reuses resume_parser helpers (`_Source`, `_terms`, `_text`, `_scalar`, `_str_list`). Guard: title/company/location + skills must literally appear in the JD text (word-boundary); seniority/employment_type only length-capped. `job_posts` RLS "own rows" policy already exists in 0001, no migration needed. DB logic in the service uses `get_admin_client` (patch `app.services.job_parser.get_admin_client` with a fake table in tests; see tests/test_jobs.py FakeQuery). POST /jobs returns 201; DELETE returns 204.
+- Tailoring (Phase 3 slice 2, 2026-10-26): POST /tailor makes TWO AI calls (job_parser.parse_job, then one {resume, cover_letter} call). Policy in tailor_validator: DROP + warn for skills/orgs/schools/titles/degrees/projects/locations/contact/dates-with-unknown-years/bullets mentioning a gap skill; WARN only (keep) for numbers not in source and gap mentions in the cover letter. generated_docs.model stores the full "<provider>:<model>" id. Rollback = delete the job_posts row (cascade).
+- Known matcher limit: `_Source.has_text` is case-insensitive, so skill "Go" matches "go-to" in a source. Deliberately kept for consistency; only gap-mention checks use exact case for terms of 3 chars or fewer.
+- Shared test fake: `tests/fake_supabase.py` (tables + storage, chained order, job_posts cascade). Patch `get_admin_client` in EVERY service module that imports it (job_parser, user_resumes, tailor).
+- Pitfall: never put large bytes in `pytest.mark.parametrize` without `ids=`; the id goes into PYTEST_CURRENT_TEST and Windows rejects env vars over 32767 chars.
 - Never open backend/.env; only .env.example.
+- Tracker + export (2026-10-26): GET endpoints (list/detail) are NOT logged, same as GET /jobs and /resumes; only mutations call log_activity. Related rows (job, match, docs, source resume) are ALSO filtered by user_id: FK checks ignore RLS, so another user could point a row at your job_post_id.
+- List without N+1: `.in_()` with ids in batches of 100 (URL length); job location via select alias `location:parsed->>location`.
+- fake_supabase now has in_, update, `alias:col->>key` select, storage list/create_signed_url, and upload REFUSES an existing path unless file_options upsert == "true".
+- A test module that imports helpers from another test module must define its own autouse settings override (fixtures do not come along with the import).
+- storage3 2.33: `create_signed_url(path, secs, {"download": file_name})` forces download; upsert = file_options `{"upsert": "true"}` (string).
+- PDF export (reportlab, built-in Times fonts): chars outside cp1252 render as black boxes, so harvard_pdf.pdf_text transliterates Latin letters; pypdf extracts "•" as \x7f (harmless). SimpleDocTemplate frames add 6 pt padding, so use BaseDocTemplate + zero-padding Frame for exact margins. Check layout visually by reading the PDF with the Read tool.
+- Not done yet: DELETE /jobs/{id} does not remove exported Storage files (only DELETE /applications/{id} does).

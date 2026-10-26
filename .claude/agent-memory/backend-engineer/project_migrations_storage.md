@@ -5,7 +5,10 @@ metadata:
   type: project
 ---
 
-- Migrations: `supabase/migrations/000N_name.sql`; 0001 = init (run), 0002 = profile_avatars (written, developer runs it manually in the SQL Editor; never executed by the agent).
+- Migrations: `supabase/migrations/000N_name.sql`; 0001 = init (run), 0002 = profile_avatars, 0003 = resumes_and_tailoring (user_resumes table, generated_docs.source_resume_id/template, indexes, documents bucket limits), 0004 = tracker (match_results.warnings, applications(user_id,status,created_at desc) index, re-asserted applications updated_at trigger; 0001 already had it). The developer runs each one manually in the SQL Editor; the agent never executes them.
+- Pitfall: when the backend reads/writes a new column (e.g. match_results.warnings), the migration must run BEFORE the new backend is deployed; say so loudly in the report.
+- Exported files: `<user_id>/<job_post_id>/<doc_id>.<pdf|docx>` in `documents` (upsert); deleting an application lists and removes that folder (best effort).
+- `documents` bucket: private; 0003 sets 5 MB + PDF/DOCX only. Only the backend uploads (service key bypasses Storage policies), so there is no insert policy. Originals live at `<user_id>/originals/<resume_id>.<ext>`. Bucket mime limits mean uploads must send the exact content-type.
 - Storage buckets are private; policies on `storage.objects` use `bucket_id = '<b>' and (storage.foldername(name))[1] = (select auth.uid())::text`, each preceded by `drop policy if exists`. Path convention `<user_id>/<file>`.
 - `avatars` bucket: 2 MB, jpeg/png/webp, upserted with `on conflict (id) do update` so limits can be re-applied. Frontend uploads directly with the Supabase client and shows photos via signed URLs; `profiles.avatar_path` holds the object path.
 - No `docs/` folder exists yet (as of 2026-10-24); skip docs tasks unless asked to create it.
