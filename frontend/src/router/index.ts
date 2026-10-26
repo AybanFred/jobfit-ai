@@ -29,6 +29,13 @@ const routes: Array<RouteRecordRaw> = [
       { path: 'profile/import', name: 'ProfileImport', component: () => import('@/views/ImportResumePage.vue') },
       { path: 'jobs', name: 'Jobs', component: () => import('@/views/JobsPage.vue') },
       { path: 'tracker', name: 'Tracker', component: () => import('@/views/TrackerPage.vue') },
+      // One application (documents, status, notes). A tabs child, so the tab bar stays; the id arrives as a prop.
+      {
+        path: 'tracker/:id',
+        name: 'TrackerDetail',
+        component: () => import('@/views/TrackerDetailPage.vue'),
+        props: true,
+      },
     ],
   },
 ];

@@ -33,9 +33,12 @@
         </ion-select-option>
       </ion-select>
       <p class="note">
-        Your resume text is sent to the provider you choose (Groq, Google or OpenAI) to read it.
-        Free plans of some providers may use submitted content to improve their products.
-        Your file itself is not stored.
+        <template v-if="note">{{ note }}</template>
+        <template v-else>
+          Your resume text is sent to the provider you choose (Groq, Google or OpenAI) to read it.
+          Free plans of some providers may use submitted content to improve their products.
+          Your file itself is not stored.
+        </template>
       </p>
     </template>
   </section>
@@ -52,6 +55,8 @@ import {
 
 // Tells the page which model is chosen (null = none) and whether uploading is allowed.
 const emit = defineEmits<{ (e: 'change', modelId: string | null): void }>();
+// Optional privacy note under the dropdown. When empty, the resume wording is used.
+defineProps<{ note?: string }>();
 const reduced = prefersReducedMotion();
 
 const models = ref<AiModel[]>([]);

@@ -150,8 +150,9 @@ ion-title { font-weight: 750; letter-spacing: -0.01em; }
 ion-skeleton-text { --border-radius: 8px; }
 ion-toast { --border-radius: 14px; }
 
-/* dropdown of the AI model (ion-select popover): use the theme instead of Ionic's fixed grey */
-ion-popover.model-popover {
+/* ion-select popovers (AI model, saved resume, template): use the theme instead of Ionic's fixed grey */
+ion-popover.model-popover,
+ion-popover.ui-popover {
   --background: var(--color-base-100);
   --border-radius: 16px;
   --box-shadow: var(--ui-shadow-lg);
@@ -159,7 +160,17 @@ ion-popover.model-popover {
   --ion-text-color: var(--color-base-content);
   --ion-color-step-150: var(--ui-line);
 }
-ion-popover.model-popover ion-item.item-disabled { opacity: 0.6; }
+ion-popover.model-popover ion-item.item-disabled,
+ion-popover.ui-popover ion-item.item-disabled { opacity: 0.6; }
+
+/* pick-one menus from the bottom (Tracker: change status, download format) */
+ion-action-sheet.ui-sheet {
+  --background: var(--color-base-100);
+  --color: var(--ui-text-soft);
+  --button-color: var(--color-base-content);
+}
+ion-action-sheet.ui-sheet .action-sheet-button { text-transform: none; }
+ion-action-sheet.ui-sheet .action-sheet-button.ui-sheet-current { --button-color: var(--ui-accent-ink); font-weight: 700; }
 
 /* ---------- Lists with swipe actions (Experience, Projects, Education, Skills) ---------- */
 ion-list.ui-list { background: transparent; padding: 0; position: relative; }

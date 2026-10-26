@@ -1,6 +1,6 @@
-import { alertController, toastController } from '@ionic/vue';
+import { actionSheetController, alertController, toastController } from '@ionic/vue';
 
-// Small helpers for the short messages and "are you sure?" questions used on the profile screens.
+// Small helpers for short messages, "are you sure?" questions and pick-one menus.
 
 /** A short message at the top of the screen (the bottom is taken by the tab bar). */
 export async function showToast(message: string, kind: 'success' | 'error' = 'success'): Promise<void> {
@@ -26,4 +26,38 @@ export async function confirmAction(header: string, message: string, confirmText
   await alert.present();
   const { role } = await alert.onDidDismiss();
   return role === 'destructive';
+}
+
+export interface ChoiceOption<T extends string> {
+  value: T;
+  text: string;
+  icon?: string;
+  /** Marks the option that is chosen now (shown in bold, with "(current)" after the text). */
+  current?: boolean;
+}
+
+/** A small menu from the bottom of the screen. Resolves to the picked value, or null when cancelled. */
+export async function chooseAction<T extends string>(
+  header: string,
+  options: ChoiceOption<T>[],
+  subHeader?: string,
+): Promise<T | null> {
+  const sheet = await actionSheetController.create({
+    header,
+    subHeader,
+    cssClass: 'ui-sheet',
+    buttons: [
+      ...options.map((o) => ({
+        text: o.current ? `${o.text} (current)` : o.text,
+        icon: o.icon,
+        cssClass: o.current ? 'ui-sheet-current' : undefined,
+        data: { value: o.value },
+      })),
+      { text: 'Cancel', role: 'cancel' },
+    ],
+  });
+  await sheet.present();
+  const { data, role } = await sheet.onDidDismiss<{ value: T }>();
+  if (role === 'cancel' || role === 'backdrop') return null;
+  return data?.value ?? null;
 }

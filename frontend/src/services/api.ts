@@ -2,7 +2,11 @@ import { supabase } from './supabase';
 
 const API_URL = import.meta.env.VITE_API_URL as string;
 
-/** Calls the FastAPI backend with the user's Supabase token attached. */
+/**
+ * Calls the FastAPI backend with the user's Supabase token attached.
+ * There is no time limit here (fetch has none), so slow AI calls (up to about 2 minutes) are fine.
+ * Pass `options.signal` to cancel; screens that wait long add their own limit.
+ */
 export async function api<T = unknown>(path: string, options: RequestInit = {}): Promise<T> {
   const { data } = await supabase.auth.getSession();
   const token = data.session?.access_token;
@@ -20,6 +24,7 @@ export async function api<T = unknown>(path: string, options: RequestInit = {}):
     const body = await res.text();
     throw new Error(`API ${res.status}: ${body}`);
   }
+  if (res.status === 204) return undefined as T; // "No Content" (for example after DELETE): there is no body to read
   return res.json() as Promise<T>;
 }
 

@@ -195,6 +195,8 @@ import { prefersReducedMotion } from '@/services/motion';
 import { useProfileStore } from '@/stores/profile';
 import { useAvatarStore } from '@/stores/avatar';
 import { useResumeImportStore } from '@/stores/resumeImport';
+import { useJobsStore } from '@/stores/jobs';
+import { useTrackerStore } from '@/stores/tracker';
 import { useIdentity } from '@/composables/useIdentity';
 import {
   fetchRecentActivity, describeAction, timeAgo, activityKind, type ActivityItem, type ActivityKind,
@@ -317,6 +319,8 @@ async function logout() {
   profileStore.reset();
   useAvatarStore().reset(); // forget the profile photo and its link
   useResumeImportStore().reset(); // wipe any imported resume details from memory
+  useJobsStore().reset(); // forget any job draft and saved resumes
+  useTrackerStore().reset(); // forget applications, notes and documents
   router.replace('/login');
 }
 
