@@ -1,6 +1,6 @@
 <template>
   <footer class="app-footer">
-    <p>© {{ year }} JobFit AI · Built by <strong>VantixFlow</strong></p>
+    <p>© {{ year }} VantixFit AI · Built by <strong>VantixFlow</strong></p>
     <p>
       <a :href="SOURCE_URL" target="_blank" rel="noopener noreferrer">View the source on GitHub</a>
     </p>

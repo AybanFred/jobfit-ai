@@ -12,7 +12,7 @@
         <div class="login-card fade-in-up">
           <header class="brand">
             <img class="logo" src="/logo-mark.svg" alt="" width="64" height="64" />
-            <h1>JobFit AI</h1>
+            <h1>VantixFit AI</h1>
             <p class="tagline">Paste a job post, get a tailored resume and cover letter.</p>
           </header>
 

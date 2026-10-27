@@ -5,7 +5,7 @@
         <ion-title>
           <span class="brand">
             <img class="brand-logo" src="/logo-mark.svg" alt="" width="28" height="28" />
-            JobFit AI
+            VantixFit AI
           </span>
         </ion-title>
         <ion-buttons slot="end">
