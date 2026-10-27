@@ -9,11 +9,25 @@
       </div>
 
       <main class="wrap">
+        <!-- Desktop only (hidden on phones, so the image is never downloaded there) -->
+        <aside class="hero-panel" aria-hidden="true">
+          <div class="hero-card">
+            <i class="hb hb1" /><i class="hb hb2" />
+            <span class="hero-pill">AI-POWERED JOB HUNTING</span>
+            <img class="hero-logo" src="/logo-mark.svg" alt="" width="150" height="150" />
+            <p class="hero-name">VantixFit <span>AI</span></p>
+            <p class="hero-pitch">Paste a job post. Get a tailored resume and cover letter, using only your real experience.</p>
+            <div class="hero-chips"><span>Resume</span><span>Cover letter</span><span>Tracker</span></div>
+            <p class="hero-by">Built by <strong>VantixFlow</strong></p>
+          </div>
+        </aside>
+
         <div class="login-card fade-in-up">
           <header class="brand">
             <img class="logo" src="/logo-mark.svg" alt="" width="64" height="64" />
             <h1>VantixFit AI</h1>
             <p class="tagline">Paste a job post, get a tailored resume and cover letter.</p>
+            <p class="welcome">{{ mode === 'login' ? 'Welcome back. Log in to continue.' : 'Create your free account.' }}</p>
           </header>
 
           <ion-segment v-model="mode" class="segment" @ionChange="onModeChange">
@@ -290,6 +304,90 @@ h1 { margin: 0; font-size: 1.7rem; font-weight: 800; letter-spacing: -0.03em; }
 .or::before, .or::after { content: ''; flex: 1; height: 1px; background: var(--ui-line); }
 .google { margin: 0; min-height: 48px; --border-radius: 14px; --color: var(--color-base-content); --border-color: var(--ui-line); text-transform: none; font-weight: 700; letter-spacing: 0; }
 .g-logo { margin-right: 10px; }
+
+.welcome { display: none; }
+.hero-panel { display: none; }
+
+/* ---------- Desktop: image on the left, form on the right ---------- */
+@media (min-width: 900px) {
+  .wrap {
+    display: grid;
+    grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
+    align-items: stretch;
+    padding: 0;
+  }
+  .hero-panel {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 40px;
+    background: var(--ui-gradient);
+    color: var(--color-primary-content);
+  }
+  /* Same design as the thumbnail, built from theme colors so it follows the theme picker */
+  .hero-card {
+    position: relative;
+    overflow: hidden;
+    isolation: isolate;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    max-width: 640px;
+    aspect-ratio: 1 / 1;
+    padding: 40px;
+    box-sizing: border-box;
+    text-align: center;
+    border-radius: 32px;
+    background: color-mix(in oklab, var(--color-primary-content) 10%, transparent);
+    border: 1px solid color-mix(in oklab, var(--color-primary-content) 28%, transparent);
+    box-shadow: 0 30px 60px color-mix(in oklab, var(--color-base-content) 35%, transparent);
+  }
+  .hb { position: absolute; z-index: -1; border-radius: 50%; filter: blur(50px); background: color-mix(in oklab, var(--color-primary-content) 30%, transparent); }
+  .hb1 { width: 260px; height: 260px; left: -90px; top: -90px; }
+  .hb2 { width: 240px; height: 240px; right: -80px; bottom: -80px; opacity: 0.7; }
+  .hero-pill {
+    padding: 8px 18px;
+    border-radius: 999px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    background: color-mix(in oklab, var(--color-primary-content) 16%, transparent);
+    border: 1px solid color-mix(in oklab, var(--color-primary-content) 35%, transparent);
+  }
+  .hero-logo { width: 150px; height: 150px; margin: 26px 0 22px; filter: drop-shadow(0 16px 24px rgba(20, 10, 80, 0.4)); }
+  .hero-name { margin: 0; font-size: clamp(2.2rem, 3.6vw, 3.4rem); font-weight: 800; letter-spacing: -0.04em; line-height: 1; }
+  .hero-name span { opacity: 0.75; }
+  .hero-pitch { margin: 16px 0 0; max-width: 420px; font-size: 1.05rem; line-height: 1.45; opacity: 0.95; }
+  .hero-chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin-top: 24px; }
+  .hero-chips span {
+    padding: 8px 16px;
+    border-radius: 12px;
+    font-size: 0.9rem;
+    font-weight: 600;
+    background: var(--color-base-100);
+    color: var(--ui-accent-ink);
+    box-shadow: 0 8px 18px rgba(20, 10, 80, 0.25);
+  }
+  .hero-by { margin: 26px 0 0; font-size: 0.85rem; opacity: 0.9; }
+  .login-card {
+    align-self: center;
+    justify-self: center;
+    max-width: 440px;
+    margin: 32px 24px;
+    padding: 36px 32px 28px;
+  }
+  .brand { margin-bottom: 26px; }
+  .logo, .tagline { display: none; }
+  h1 { font-size: 1.9rem; }
+  .welcome { display: block; margin: 8px 0 0; color: var(--ui-text-soft); font-size: 1rem; }
+}
+
+/* Wide screens: give the form column a little more room */
+@media (min-width: 1400px) {
+  .login-card { max-width: 480px; padding: 44px 40px 32px; }
+}
 
 @media (prefers-reduced-motion: reduce) {
   .blob, .logo { animation: none; }
