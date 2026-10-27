@@ -79,6 +79,29 @@
               <span v-else>{{ mode === 'login' ? 'Log in' : 'Create account' }}</span>
             </ion-button>
           </form>
+
+          <!-- Google login works in the browser only for now (the Android app comes later) -->
+          <template v-if="!isNative">
+            <div class="or" role="separator"><span>or</span></div>
+            <ion-button
+              class="google pressable"
+              expand="block"
+              fill="outline"
+              :disabled="loading || googleLoading"
+              @click="googleSignIn"
+            >
+              <ion-spinner v-if="googleLoading" name="crescent" aria-label="Opening Google" />
+              <template v-else>
+                <svg class="g-logo" slot="start" viewBox="0 0 48 48" width="20" height="20" aria-hidden="true">
+                  <path fill="#EA4335" d="M24 9.5c3.5 0 6.6 1.2 9.1 3.6l6.8-6.8C35.8 2.4 30.3 0 24 0 14.6 0 6.5 5.4 2.6 13.2l7.9 6.1C12.4 13.6 17.7 9.5 24 9.5z"/>
+                  <path fill="#4285F4" d="M46.5 24.5c0-1.6-.1-3.1-.4-4.5H24v9h12.7c-.6 3-2.2 5.5-4.7 7.2l7.6 5.9c4.4-4.1 6.9-10.2 6.9-17.6z"/>
+                  <path fill="#FBBC05" d="M10.5 28.7A14.5 14.5 0 0 1 9.5 24c0-1.6.3-3.2.8-4.7l-7.9-6.1A24 24 0 0 0 0 24c0 3.9.9 7.5 2.6 10.8l7.9-6.1z"/>
+                  <path fill="#34A853" d="M24 48c6.5 0 11.9-2.1 15.9-5.8l-7.6-5.9c-2.1 1.4-4.9 2.3-8.3 2.3-6.3 0-11.6-4.1-13.5-9.8l-7.9 6.1C6.5 42.6 14.6 48 24 48z"/>
+                </svg>
+                Continue with Google
+              </template>
+            </ion-button>
+          </template>
           <AppFooter />
         </div>
       </main>
@@ -95,6 +118,7 @@ import {
 } from '@ionic/vue';
 import ThemePicker from '@/components/ThemePicker.vue';
 import AppFooter from '@/components/AppFooter.vue';
+import { Capacitor } from '@capacitor/core';
 import { useAuthStore } from '@/stores/auth';
 import { friendlyAuthError } from '@/services/errors';
 import { tapHaptic } from '@/services/haptics';
@@ -107,6 +131,8 @@ const fullName = ref('');
 const email = ref('');
 const password = ref('');
 const loading = ref(false);
+const googleLoading = ref(false);
+const isNative = Capacitor.isNativePlatform();
 const error = ref('');
 const info = ref('');
 const touched = reactive({ email: false, password: false });
@@ -135,8 +161,22 @@ function onModeChange() {
   touched.password = false;
 }
 
+async function googleSignIn() {
+  if (loading.value || googleLoading.value) return;
+  error.value = '';
+  info.value = '';
+  googleLoading.value = true;
+  tapHaptic('medium');
+  try {
+    await auth.signInWithGoogle(); // the page leaves for Google, so we only get here on an error
+  } catch (e) {
+    error.value = friendlyAuthError(e);
+    googleLoading.value = false;
+  }
+}
+
 async function submit() {
-  if (loading.value) return; // ignore a second press while we are already working
+  if (loading.value || googleLoading.value) return; // ignore a second press while we are already working
   error.value = '';
   info.value = '';
   touched.email = true;
@@ -240,6 +280,11 @@ h1 { margin: 0; font-size: 1.7rem; font-weight: 800; letter-spacing: -0.03em; }
 .message.success { color: color-mix(in oklab, var(--color-success) 42%, var(--color-base-content)); }
 
 .submit { margin: 4px 0 0; }
+
+.or { display: flex; align-items: center; gap: 12px; margin: 18px 0 14px; color: var(--ui-text-faint); font-size: 0.85rem; }
+.or::before, .or::after { content: ''; flex: 1; height: 1px; background: var(--ui-line); }
+.google { margin: 0; min-height: 48px; --border-radius: 14px; --color: var(--color-base-content); --border-color: var(--ui-line); text-transform: none; font-weight: 700; letter-spacing: 0; }
+.g-logo { margin-right: 10px; }
 
 @media (prefers-reduced-motion: reduce) {
   .blob, .logo { animation: none; }

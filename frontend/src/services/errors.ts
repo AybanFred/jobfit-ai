@@ -23,6 +23,9 @@ export function friendlyAuthError(e: unknown): string {
   if (msg.includes('rate limit') || msg.includes('too many')) {
     return 'Too many attempts. Please wait a minute and try again.';
   }
+  if (msg.includes('provider is not enabled') || msg.includes('unsupported provider')) {
+    return 'Google login is not available right now. Please use your email and password.';
+  }
   if (msg.includes('failed to fetch') || msg.includes('network') || msg.includes('load failed')) return OFFLINE;
   return 'Something went wrong. Please try again.';
 }

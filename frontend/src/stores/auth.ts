@@ -41,6 +41,19 @@ export const useAuthStore = defineStore('auth', {
       if (error) throw error;
     },
 
+    // One call covers log in and sign up: Supabase creates the account the first time.
+    // The browser leaves for Google and comes back to /tabs/home with the session in the URL.
+    async signInWithGoogle() {
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: `${window.location.origin}/tabs/home`,
+          queryParams: { prompt: 'select_account' }, // always let the user pick the Google account
+        },
+      });
+      if (error) throw error;
+    },
+
     async signOut() {
       await supabase.auth.signOut();
     },

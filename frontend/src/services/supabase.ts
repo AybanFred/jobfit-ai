@@ -11,6 +11,6 @@ export const supabase = createClient(url, anonKey, {
   auth: {
     persistSession: true,
     autoRefreshToken: true,
-    detectSessionInUrl: false, // not needed inside a Capacitor app
+    detectSessionInUrl: true, // reads the session when Google sends the user back to the web app
   },
 });
