@@ -8,7 +8,7 @@
 | Status | Draft for review |
 | Audience | Clients, security reviewers, developers (sections 1 to 3 are in plain language) |
 
-**Purpose:** To explain how JobFit AI protects personal data (a resume is personal data), what is stored and what is not, what is shared with outside AI companies, and which risks remain. No keys, passwords or `.env` contents appear in this document.
+**Purpose:** To explain how VantixFit AI protects personal data (a resume is personal data), what is stored and what is not, what is shared with outside AI companies, and which risks remain. No keys, passwords or `.env` contents appear in this document.
 
 > This is a description of the code as read on 24 October 2026. It is **not** an independent security audit or a legal compliance review. No penetration test has been done.
 
@@ -24,7 +24,7 @@
 | Does my resume text leave the system? | Yes, but only when you import a resume: the text is sent to the AI provider you choose. |
 | Can the AI invent skills for me? | No. The server removes anything it cannot find in your resume, and you review everything before it is saved. |
 | Is my profile photo public? | No. It is private and shown only through a short-lived link. |
-| Are passwords stored by JobFit AI? | No. Login is handled by Supabase Auth. |
+| Are passwords stored by VantixFit AI? | No. Login is handled by Supabase Auth. |
 
 ## 2. Security model
 

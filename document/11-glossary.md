@@ -8,7 +8,7 @@
 | Status | Draft for review |
 | Audience | Everyone |
 
-**Purpose:** To explain, in plain words, the terms used in the JobFit AI documentation. Terms are listed in alphabetical order.
+**Purpose:** To explain, in plain words, the terms used in the VantixFit AI documentation. Terms are listed in alphabetical order.
 
 ---
 
@@ -22,9 +22,9 @@
 | **Application tracker** | Planned (Phase 5) screen to follow job applications from saved to offer. Not built yet. |
 | **ATS** | Applicant Tracking System. Software employers use to receive and filter resumes. "ATS-friendly" means a simple layout that such software can read. Generation of ATS-friendly resumes is planned (Phase 3). |
 | **Authentication** | Proving who you are, here by email and password through Supabase. |
-| **Backend** | The server part of JobFit AI (FastAPI). It handles files, AI calls and secret keys. |
+| **Backend** | The server part of VantixFit AI (FastAPI). It handles files, AI calls and secret keys. |
 | **Bearer token** | The way the app sends the access token: in an `Authorization: Bearer ...` header. |
-| **Bucket (storage bucket)** | A named container for files in Supabase Storage. JobFit AI uses `documents` and `avatars`. |
+| **Bucket (storage bucket)** | A named container for files in Supabase Storage. VantixFit AI uses `documents` and `avatars`. |
 | **Capacitor** | A tool that wraps a web app so it can run as an Android (or iOS) app. |
 | **Cascade delete** | When a user is deleted, their rows in other tables are deleted automatically. |
 | **Changelog** | A list of what changed in each version. See [CHANGELOG.md](CHANGELOG.md). |
@@ -50,7 +50,7 @@
 | **pgvector** | A Postgres add-on for storing meaning-based number lists. Enabled for future skill matching; unused today. |
 | **Pinia** | The library the app uses to share data between screens. |
 | **Prompt** | The instructions and text sent to an AI model. |
-| **Prompt injection** | An attempt to trick an AI with instructions hidden in the text it reads (for example inside a resume). JobFit AI treats resume text as data only. |
+| **Prompt injection** | An attempt to trick an AI with instructions hidden in the text it reads (for example inside a resume). VantixFit AI treats resume text as data only. |
 | **Rate limit** | A cap on how many requests a service accepts in a short time. Free AI plans have low limits, which causes "busy" messages. |
 | **RLS (Row Level Security)** | A database rule that lets each user see and change only their own rows. |
 | **Service key (secret key)** | A powerful Supabase key that bypasses RLS. It exists only on the server and never in the app. |

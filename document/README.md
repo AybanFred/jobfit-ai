@@ -1,4 +1,4 @@
-# JobFit AI - Project Documentation
+# VantixFit AI - Project Documentation
 
 | Item | Detail |
 |---|---|
@@ -11,13 +11,13 @@
 | Product version described | 0.1.0 |
 | Audience | Clients, end users, project owner, developers, testers |
 
-**Purpose:** This folder is the complete documentation set for JobFit AI. This page explains what is in each file and who should read it.
+**Purpose:** This folder is the complete documentation set for VantixFit AI. This page explains what is in each file and who should read it.
 
 ---
 
-## 1. What is JobFit AI?
+## 1. What is VantixFit AI?
 
-JobFit AI is a job-hunting app. The long-term idea is simple: you paste a job description, and the app helps you create a resume and cover letter that fit that job, using only the real facts you have stored about yourself.
+VantixFit AI is a job-hunting app. The long-term idea is simple: you paste a job description, and the app helps you create a resume and cover letter that fit that job, using only the real facts you have stored about yourself.
 
 Today (24 October 2026), the app helps you build and keep your **Master Profile**. This is one safe place that holds your personal details, work experience, projects, education and skills. You can type everything in yourself, or import it from an existing PDF or DOCX resume and review it before it is saved.
 
@@ -76,7 +76,7 @@ Pick the path that matches your role. You do not need to read everything.
 
 ## 5. Conventions used in all files
 
-- **Product name:** JobFit AI. **Main data area:** Master Profile.
+- **Product name:** VantixFit AI. **Main data area:** Master Profile.
 - **IDs:** `BRQ-` business requirement, `FR-` functional requirement, `NFR-` non-functional requirement, `US-` user story, `UC-` use case, `BR-` business rule (file 04), `UAT-` acceptance test (file 10), `ERR-` error case (file 04).
 - **Priorities:** Must, Should, Could.
 - **Honesty rule:** If the code does not clearly confirm a behaviour, the text says **to be confirmed** instead of guessing.

@@ -8,13 +8,13 @@
 | Status | Draft for review |
 | Audience | Clients, sponsors, end users, project team |
 
-**Purpose:** To explain what JobFit AI is for, who it helps, what it does today, and what it will not do. This file is written in plain language.
+**Purpose:** To explain what VantixFit AI is for, who it helps, what it does today, and what it will not do. This file is written in plain language.
 
 ---
 
 ## 1. Vision
 
-Applying for jobs is slow because every employer wants a slightly different resume and cover letter. JobFit AI aims to make this faster and calmer: you keep one trusted record of your real background, and the app helps you present it well for each job, without ever making things up.
+Applying for jobs is slow because every employer wants a slightly different resume and cover letter. VantixFit AI aims to make this faster and calmer: you keep one trusted record of your real background, and the app helps you present it well for each job, without ever making things up.
 
 ## 2. Problem statement
 
@@ -25,7 +25,7 @@ Applying for jobs is slow because every employer wants a slightly different resu
 | Online tools that "write for you" may add skills you do not have | Risk of false claims in an application |
 | Applications are hard to track | Missed follow-ups |
 
-JobFit AI's answer is a **Master Profile** (one source of truth), with an AI that is only allowed to work with the facts in it.
+VantixFit AI's answer is a **Master Profile** (one source of truth), with an AI that is only allowed to work with the facts in it.
 
 ## 3. Target users
 

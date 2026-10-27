@@ -8,7 +8,7 @@
 | Status | Draft for review |
 | Audience | Clients, business and system analysts, testers |
 
-**Purpose:** To list what JobFit AI must do (business, functional and non-functional requirements), to describe the implemented features as user stories with acceptance criteria, and to trace each requirement to a feature, a status and a test.
+**Purpose:** To list what VantixFit AI must do (business, functional and non-functional requirements), to describe the implemented features as user stories with acceptance criteria, and to trace each requirement to a feature, a status and a test.
 
 **Status labels:** *Available now* (Phase 1 complete), *Built, awaiting verification* (Phase 2), *Planned* (Phases 3 to 7, not built). See [README.md](README.md).
 

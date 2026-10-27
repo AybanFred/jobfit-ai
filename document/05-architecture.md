@@ -8,13 +8,13 @@
 | Status | Draft for review |
 | Audience | Developers and technical stakeholders |
 
-**Purpose:** To explain how JobFit AI is built, why it is built that way, and where each responsibility lives. Everything here was read from the repository on 24 October 2026. Anything not proven by the repository is marked *intended* or *to be confirmed*.
+**Purpose:** To explain how VantixFit AI is built, why it is built that way, and where each responsibility lives. Everything here was read from the repository on 24 October 2026. Anything not proven by the repository is marked *intended* or *to be confirmed*.
 
 ---
 
 ## 1. Overview and rationale
 
-JobFit AI has three parts:
+VantixFit AI has three parts:
 
 1. **A mobile-first app** (Ionic + Vue 3, packaged for Android with Capacitor, also runs in a browser).
 2. **A small backend API** (Python FastAPI).
@@ -35,7 +35,7 @@ This follows the project's frontend rule: simple user data may use the Supabase 
 flowchart LR
   user(["Job seeker"])
   owner(["Project owner"])
-  jobfit["JobFit AI system"]
+  jobfit["VantixFit AI system"]
   supa[("Supabase: Auth, Postgres, Storage")]
   groq["Groq API"]
   gem["Google Gemini API"]

@@ -8,9 +8,9 @@
 | Status | Draft for review (describes app version 0.1.0) |
 | Audience | End users and support staff (no technical knowledge needed) |
 
-**Purpose:** To show you, step by step, how to use JobFit AI today. Each important step ends with a line that says how to check that it worked.
+**Purpose:** To show you, step by step, how to use VantixFit AI today. Each important step ends with a line that says how to check that it worked.
 
-> **Please note.** JobFit AI is still being built. This guide covers what exists now: your account, your Master Profile, importing a resume, your profile photo and the colour themes. The **Jobs** and **Tracker** tabs only say "Coming soon". Creating tailored resumes and cover letters is planned, not available yet.
+> **Please note.** VantixFit AI is still being built. This guide covers what exists now: your account, your Master Profile, importing a resume, your profile photo and the colour themes. The **Jobs** and **Tracker** tabs only say "Coming soon". Creating tailored resumes and cover letters is planned, not available yet.
 
 > **Our promise.** The AI never invents skills or experience. When something is not found in your resume, it stays empty so that you can fill it in with the truth.
 
@@ -211,7 +211,7 @@ Tap **Discard** to throw the draft away. If you changed anything, the app asks y
 
 ### 6.6 About the AI model and your privacy
 
-When you choose a model, your resume **text** is sent to that provider (Groq, Google or OpenAI) so it can be read. Free plans of some providers may use submitted content to improve their products. If this is a concern, do not import a resume with sensitive details, or type your profile by hand instead. The file itself is not stored by JobFit AI.
+When you choose a model, your resume **text** is sent to that provider (Groq, Google or OpenAI) so it can be read. Free plans of some providers may use submitted content to improve their products. If this is a concern, do not import a resume with sensitive details, or type your profile by hand instead. The file itself is not stored by VantixFit AI.
 
 ## 7. Profile photo
 

@@ -8,7 +8,7 @@
 | Status | Draft for review |
 | Audience | Everyone |
 
-**Purpose:** To record notable changes to JobFit AI by version. The format follows [Keep a Changelog](https://keepachangelog.com/) (Added, Changed, Fixed, and so on). Dates come from the repository commit log (local time, UTC+8). Only what is visible in the repository is listed; no earlier history is invented.
+**Purpose:** To record notable changes to VantixFit AI by version. The format follows [Keep a Changelog](https://keepachangelog.com/) (Added, Changed, Fixed, and so on). Dates come from the repository commit log (local time, UTC+8). Only what is visible in the repository is listed; no earlier history is invented.
 
 Status labels: see [README.md](README.md). Phase 1 is *Available now*. Phase 2 is *Built, awaiting verification*.
 

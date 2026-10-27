@@ -8,7 +8,7 @@
 | Status | Draft for review |
 | Audience | Technical staff (developers, administrators) |
 
-**Purpose:** To explain how to set up JobFit AI on a Windows PC, configure it, run it, build the Android app, and fix common problems. Commands are for Windows PowerShell. Only variable *names* are shown; never paste real keys into documents, chat or Git.
+**Purpose:** To explain how to set up VantixFit AI on a Windows PC, configure it, run it, build the Android app, and fix common problems. Commands are for Windows PowerShell. Only variable *names* are shown; never paste real keys into documents, chat or Git.
 
 ---
 

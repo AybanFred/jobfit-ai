@@ -27,13 +27,15 @@ export const useAuthStore = defineStore('auth', {
       this.ready = true;
     },
 
-    async signUp(email: string, password: string, fullName: string) {
-      const { error } = await supabase.auth.signUp({
+    /** Returns true when the user is already logged in (email confirmation is off in Supabase). */
+    async signUp(email: string, password: string, fullName: string): Promise<boolean> {
+      const { data, error } = await supabase.auth.signUp({
         email,
         password,
         options: { data: { full_name: fullName } },
       });
       if (error) throw error;
+      return !!data.session;
     },
 
     async signIn(email: string, password: string) {

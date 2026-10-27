@@ -186,7 +186,12 @@ async function submit() {
   loading.value = true;
   try {
     if (mode.value === 'signup') {
-      await auth.signUp(email.value.trim(), password.value, fullName.value);
+      const loggedIn = await auth.signUp(email.value.trim(), password.value, fullName.value);
+      if (loggedIn) {
+        // No confirmation email needed: Supabase already started the session.
+        router.replace('/tabs/home');
+        return;
+      }
       mode.value = 'login';
       password.value = '';
       touched.email = false;

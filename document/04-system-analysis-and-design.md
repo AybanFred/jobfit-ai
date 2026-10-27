@@ -32,7 +32,7 @@ flowchart LR
   V([Visitor])
   U([Job seeker])
   O([Project owner])
-  APP["JobFit AI app (web or Android)"]
+  APP["VantixFit AI app (web or Android)"]
   API["Backend API (FastAPI)"]
   SB[("Supabase: Auth, Database, Storage")]
   AI["AI provider: Groq, Gemini or OpenAI"]

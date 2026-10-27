@@ -2,7 +2,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createPinia, setActivePinia } from 'pinia';
 
 const signInWithOAuth = vi.fn();
-vi.mock('@/services/supabase', () => ({ supabase: { auth: { signInWithOAuth: (a: unknown) => signInWithOAuth(a) } } }));
+const signUp = vi.fn();
+vi.mock('@/services/supabase', () => ({
+  supabase: { auth: { signInWithOAuth: (a: unknown) => signInWithOAuth(a), signUp: (a: unknown) => signUp(a) } },
+}));
 
 import { useAuthStore } from '@/stores/auth';
 import { friendlyAuthError } from '@/services/errors';
@@ -10,6 +13,7 @@ import { friendlyAuthError } from '@/services/errors';
 beforeEach(() => {
   setActivePinia(createPinia());
   signInWithOAuth.mockReset();
+  signUp.mockReset();
 });
 
 describe('auth store: Google login', () => {
@@ -36,5 +40,22 @@ describe('friendlyAuthError: Google', () => {
     expect(friendlyAuthError(new Error('Unsupported provider: provider is not enabled'))).toBe(
       'Google login is not available right now. Please use your email and password.',
     );
+  });
+});
+
+describe('auth store: email sign up', () => {
+  it('says the user is logged in when Supabase returns a session (confirmation off)', async () => {
+    signUp.mockResolvedValue({ data: { session: { access_token: 't' } }, error: null });
+    await expect(useAuthStore().signUp('a@b.co', 'secret1', 'Alex')).resolves.toBe(true);
+  });
+
+  it('says the user must confirm the email when there is no session yet', async () => {
+    signUp.mockResolvedValue({ data: { session: null }, error: null });
+    await expect(useAuthStore().signUp('a@b.co', 'secret1', 'Alex')).resolves.toBe(false);
+  });
+
+  it('throws the Supabase error', async () => {
+    signUp.mockResolvedValue({ data: { session: null }, error: new Error('User already registered') });
+    await expect(useAuthStore().signUp('a@b.co', 'secret1', '')).rejects.toThrow('already registered');
   });
 });

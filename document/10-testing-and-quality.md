@@ -8,7 +8,7 @@
 | Status | Draft for review |
 | Audience | Testers, developers, clients (acceptance, section 5) |
 
-**Purpose:** To describe how JobFit AI is tested, what the automated tests cover, how to run them, a manual acceptance checklist for client sign-off, and what has **not** been verified yet.
+**Purpose:** To describe how VantixFit AI is tested, what the automated tests cover, how to run them, a manual acceptance checklist for client sign-off, and what has **not** been verified yet.
 
 ---
 
