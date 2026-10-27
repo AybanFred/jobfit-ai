@@ -164,6 +164,7 @@
           </ul>
         </section>
       </div>
+      <AppFooter />
     </ion-content>
   </ion-page>
 </template>
@@ -181,6 +182,7 @@ import {
   shieldCheckmarkOutline, flashOutline,
 } from 'ionicons/icons';
 import ThemePicker from '@/components/ThemePicker.vue';
+import AppFooter from '@/components/AppFooter.vue';
 import ProgressRing from '@/components/ProgressRing.vue';
 import QuickActionCard from '@/components/QuickActionCard.vue';
 import StatusRow, { type CheckStatus } from '@/components/StatusRow.vue';

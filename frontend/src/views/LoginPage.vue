@@ -79,6 +79,7 @@
               <span v-else>{{ mode === 'login' ? 'Log in' : 'Create account' }}</span>
             </ion-button>
           </form>
+          <AppFooter />
         </div>
       </main>
     </ion-content>
@@ -93,6 +94,7 @@ import {
   IonButton, IonSpinner,
 } from '@ionic/vue';
 import ThemePicker from '@/components/ThemePicker.vue';
+import AppFooter from '@/components/AppFooter.vue';
 import { useAuthStore } from '@/stores/auth';
 import { friendlyAuthError } from '@/services/errors';
 import { tapHaptic } from '@/services/haptics';

@@ -184,6 +184,7 @@
           </p>
         </template>
       </div>
+      <AppFooter />
     </ion-content>
   </ion-page>
 </template>
@@ -197,6 +198,7 @@ import {
 } from '@ionic/vue';
 import { downloadOutline, openOutline, sparklesOutline, swapVerticalOutline } from 'ionicons/icons';
 import EmptyState from '@/components/EmptyState.vue';
+import AppFooter from '@/components/AppFooter.vue';
 import StatusBadge from '@/components/StatusBadge.vue';
 import { useMediaQuery } from '@/composables/useMediaQuery';
 import { useTrackerActions } from '@/composables/useTrackerActions';

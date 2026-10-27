@@ -275,6 +275,7 @@
           </ion-button>
         </section>
       </div>
+      <AppFooter />
     </ion-content>
   </ion-page>
 </template>
@@ -291,6 +292,7 @@ import {
   alertCircleOutline, checkmarkCircle, documentTextOutline, personCircleOutline, sparklesOutline,
 } from 'ionicons/icons';
 import IconChip from '@/components/IconChip.vue';
+import AppFooter from '@/components/AppFooter.vue';
 import ImportDropZone from '@/components/ImportDropZone.vue';
 import ImportModelPicker from '@/components/ImportModelPicker.vue';
 import { useJobsStore } from '@/stores/jobs';

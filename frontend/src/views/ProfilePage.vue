@@ -111,6 +111,7 @@
           </section>
         </template>
       </div>
+      <AppFooter />
     </ion-content>
   </ion-page>
 </template>
@@ -127,6 +128,7 @@ import {
   briefcaseOutline, folderOpenOutline, schoolOutline, buildOutline,
 } from 'ionicons/icons';
 import ProgressRing from '@/components/ProgressRing.vue';
+import AppFooter from '@/components/AppFooter.vue';
 import ImportResumeCard from '@/components/ImportResumeCard.vue';
 import AvatarChanger from '@/components/AvatarChanger.vue';
 import IconChip, { type Tone } from '@/components/IconChip.vue';
