@@ -9,7 +9,8 @@
     "preview": "vite preview",
     "test:e2e": "cypress run",
     "test:unit": "vitest",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "generate-pwa-assets": "pwa-assets-generator"
   },
   "dependencies": {
     "@capacitor/android": "^8.5.3",
@@ -23,12 +24,14 @@
     "@supabase/supabase-js": "^2.118.0",
     "ionicons": "^8.1.0",
     "pinia": "^4.1.0",
+    "vite-plugin-pwa": "^2.0.0",
     "vue": "^3.5.0",
     "vue-router": "^5.0.0"
   },
   "devDependencies": {
     "@capacitor/cli": "8.5.3",
     "@tailwindcss/vite": "^4.3.3",
+    "@vite-pwa/assets-generator": "^2.0.0",
     "@vitejs/plugin-legacy": "^8.0.0",
     "@vitejs/plugin-vue": "^6.0.0",
     "@vue/eslint-config-typescript": "^12.0.0",
